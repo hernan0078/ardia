@@ -12,6 +12,7 @@ import { cleanedTabsFor, cleanUpCandidates } from "../store/organize";
 import { openNewTabInSplit } from "./layout/splitActions";
 import { listTopGap, SIDEBAR_FIELD, SIDEBAR_FOOTER_DOWNLOADS, SIDEBAR_HEADER_WITH_FIELD, useAddressBarInSidebar } from "./layout/windowLayout";
 import { SIDEBAR_PLAYER_HEIGHT, SidebarPlayer, useSidebarPlayerTab } from "./media/SidebarPlayer";
+import { SidebarDownloadsButton } from "./DownloadsPeek";
 import { HoverSlot } from "./HoverSlot";
 import { IconButton, useHover } from "./primitives";
 import { PROFILE_INDICATOR_X, ProfileIndicator } from "./ProfileIndicator";
@@ -69,7 +70,7 @@ export function Sidebar({ width }: { width: number }) {
   const addressBar = useAddressBarInSidebar();
   const header = addressBar ? SIDEBAR_HEADER_WITH_FIELD : layout.sidebarHeader;
   const glowRoom = addressBar ? 0 : GLOW_ROOM;
-  const hasDownloads = useBrowser((s) => downloadsIn(s, windowId).length > 0);
+  const hasDownloads = useBrowser((s) => s.settings.alwaysShowDownloadsButton || downloadsIn(s, windowId).length > 0);
   const dots = useProfileDotsShown();
   const footerDownloads = addressBar && hasDownloads;
   const footer = dots || footerDownloads ? PROFILE_DOTS_HEIGHT : 0;
@@ -142,7 +143,7 @@ export function Sidebar({ width }: { width: number }) {
               {dots ? <ProfileDots windowId={windowId} /> : null}
               {footerDownloads ? (
                 <View style={{ position: "absolute", left: layout.sidebarInset, bottom: SIDEBAR_FOOTER_DOWNLOADS.bottom }}>
-                  <DownloadsButton windowId={windowId} />
+                  <SidebarDownloadsButton windowId={windowId} />
                 </View>
               ) : null}
             </View>
@@ -159,7 +160,7 @@ export function Sidebar({ width }: { width: number }) {
               <View pointerEvents="box-none" style={{ height: layout.sidebarHeader, flexDirection: "row", alignItems: "flex-start", paddingLeft: PROFILE_INDICATOR_X, paddingRight: 7, paddingTop: 27 - 17 }}>
                 <ProfileIndicator room={width - PROFILE_INDICATOR_X - 7 - (hasDownloads ? 34 + 2 : 0)} />
                 <View pointerEvents="none" style={{ flex: 1 }} />
-                {hasDownloads ? <DownloadsButton windowId={windowId} /> : null}
+                {hasDownloads ? <SidebarDownloadsButton windowId={windowId} /> : null}
               </View>
             )}
           </View>
@@ -496,22 +497,6 @@ function useRevealTabs(windowId: string, scroll: RefObject<ScrollView | null>, s
       geometry.current.laidOut = undefined;
     };
   }, [windowId]);
-}
-
-function DownloadsButton({ windowId }: { windowId: string }) {
-  return (
-    <IconButton
-      icon="arrow.down.circle"
-      size={16}
-      box={34}
-      radius={10}
-      tooltip="Downloads (⇧⌘J)"
-      onPress={() => {
-        const s = useBrowser.getState();
-        s.setDownloadsOpen(windowId, !s.windowUi[windowId]?.downloadsOpen);
-      }}
-    />
-  );
 }
 
 const CLIPPED = { marginTop: -layout.rowGap, paddingTop: layout.rowGap, overflow: "hidden" } as const;

@@ -48,6 +48,26 @@ const endedPrivateDownloads = new Set<string>();
 export const downloadsIn = (s: Pick<BrowserState, "downloads" | "windows">, windowId: string) =>
   s.downloads.filter((d) => downloadVisibleIn(d, s.windows[windowId]));
 
+export const RECENT_DOWNLOADS = 3;
+
+export const recentDownloadsIn = (s: Pick<BrowserState, "downloads" | "windows">, windowId: string, count = RECENT_DOWNLOADS) =>
+  downloadsIn(s, windowId).slice(0, count);
+
+export type DownloadsProgress = { fraction: number; paused: boolean };
+
+export function downloadsProgress(downloads: readonly Download[]): DownloadsProgress | null {
+  const active = downloads.filter((d) => d.state === "downloading");
+  if (!active.length) return null;
+  let received = 0;
+  let total = 0;
+  for (const d of active) {
+    if (d.total <= 0) continue;
+    received += Math.min(Math.max(d.received, 0), d.total);
+    total += d.total;
+  }
+  return { fraction: total > 0 ? received / total : 0, paused: active.every((d) => d.paused) };
+}
+
 export const DEFAULT_WINDOW_UI: WindowUi = { panel: { open: false, initialText: "" }, downloadsOpen: false };
 export const CLOSED_FIND: FindState = { open: false, query: "", count: null, active: 0 };
 const MAX_DOWNLOADS = 100;

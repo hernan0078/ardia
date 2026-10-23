@@ -89,8 +89,8 @@ export const cardHoverProps = {
 
 export const pointerOnRow = (id: string) => underPointer === id;
 
-const panelOpen = (windowId: string) => !!useBrowser.getState().windowUi[windowId]?.panel?.open;
 const covered = new Set<string>();
+const cardsBlocked = (windowId: string) => !!useBrowser.getState().windowUi[windowId]?.panel?.open || covered.has(windowId);
 const pointedRows = new Map<string, Set<() => void>>();
 
 export function setRowsCovered(windowId: string, on: boolean) {
@@ -115,14 +115,14 @@ export function suppressHover(value: boolean) {
 
 async function show(windowId: string, target: Target, mine: number) {
   const anchor = await measureRow(windowId, target.id);
-  if (mine !== ticket || suppressed || !anchor || panelOpen(windowId) || sidebarUi().iconPicker || sidebarUi().renaming) return;
+  if (mine !== ticket || suppressed || !anchor || cardsBlocked(windowId) || sidebarUi().iconPicker || sidebarUi().renaming) return;
   if (onCard && sidebarUi().hover) return;
   exitPoint = null;
   setSidebarUi({ hover: { windowId, ...target, anchor } });
 }
 
 export function hoverEnter(windowId: string, target: Target) {
-  if (suppressed || panelOpen(windowId)) return;
+  if (suppressed || cardsBlocked(windowId)) return;
   clearTimeout(showTimer);
   clearTimeout(hideTimer);
   clearTimeout(aimTimer);

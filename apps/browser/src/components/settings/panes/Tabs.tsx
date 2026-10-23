@@ -33,6 +33,8 @@ export function TabsPane() {
       <Group style={{ marginTop: 14 }}>
         {toggle("hideToolbarWhileScrolling", "tabs.hideToolbarWhileScrolling")}
         {!top && toggle("showSidebarButton", "tabs.showSidebarButton")}
+        {!top && toggle("peekRecentDownloads", "tabs.peekRecentDownloads")}
+        {!top && toggle("alwaysShowDownloadsButton", "tabs.alwaysShowDownloadsButton")}
       </Group>
 
       <SectionHeader title="General" />

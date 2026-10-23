@@ -97,6 +97,12 @@ const ROWS: Record<SettingsPane, Section[]> = {
           keywords: ["auto hide", "compact"],
         },
         showSidebarButton: { title: "Show sidebar button", description: "⌘S and View › Auto-Hide Tabs still hide and show the sidebar.", keywords: ["toggle sidebar"] },
+        peekRecentDownloads: {
+          title: "Peek recent downloads on hover",
+          description: "Hovering the sidebar's Downloads button shows your last 3 downloads. Drag one onto a page, Finder or another app.",
+          keywords: ["downloads", "files", "drag", "hover"],
+        },
+        alwaysShowDownloadsButton: { title: "Always show Downloads button", description: "Keeps it in the sidebar before your first download, and after you clear the list.", keywords: ["downloads", "files"] },
       },
     },
     {

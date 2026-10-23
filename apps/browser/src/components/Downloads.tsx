@@ -1,6 +1,6 @@
 import { cancelDownload, pauseDownload, resumeDownload, type Download } from "@ardia/ardiacore";
 import { ContextMenuArea, copyText, fileExists, fileIcon, MouseArea, moveToTrash, openFile, revealFile, showMenu, Surface, Symbol, VisualEffect, type MenuItem } from "@ardia/shell";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import { Animated, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { hex, layout, useTheme } from "../lib/theme";
 import { useShallow } from "zustand/react/shallow";
@@ -137,7 +137,7 @@ function rowFill(dark: boolean, hovered: boolean, pressed: boolean) {
   return dark ? `rgba(255,255,255,${pressed ? 0.12 : 0.07})` : `rgba(0,0,0,${pressed ? 0.1 : 0.06})`;
 }
 
-const progressTrack = (dark: boolean) => (dark ? "#717782" : "#CED7E7");
+export const progressTrack = (dark: boolean) => (dark ? "#717782" : "#CED7E7");
 
 export function DownloadsPopover() {
   const windowId = useWindowId();
@@ -152,9 +152,53 @@ function DownloadsPanel({ windowId, closing, onClosed }: { windowId: string; clo
   const shownList = useRef({ ids: liveIds, clearable: liveClearable });
   if (!closing) shownList.current = { ids: liveIds, clearable: liveClearable };
   const { ids, clearable } = shownList.current;
+  const setOpen = (value: boolean) => useBrowser.getState().setDownloadsOpen(windowId, value);
+
+  return (
+    <View pointerEvents={closing ? "none" : "auto"} style={StyleSheet.absoluteFill}>
+      <Pressable style={StyleSheet.absoluteFill} onPress={() => setOpen(false)} />
+      <DownloadsFrame closing={closing} onClosed={onClosed} footer>
+        <DownloadsHeader>
+          {clearable && (
+            <TextButton
+              title="Clear"
+              onPress={() => {
+                setOpen(false);
+                useBrowser.getState().clearDownloads(windowId);
+              }}
+            />
+          )}
+        </DownloadsHeader>
+        {ids.length === 0 ? (
+          <View style={{ height: PANEL.rowHeight, paddingHorizontal: PANEL.inset, justifyContent: "center" }}>
+            <Text style={{ fontSize: PANEL.titleSize, color: theme.textSecondary }}>No downloads yet</Text>
+          </View>
+        ) : (
+          <ScrollView style={{ maxHeight: VISIBLE_ROWS * ROW }} contentContainerStyle={{ paddingHorizontal: PANEL.rowInset }}>
+            {ids.map((id) => (
+              <DownloadRowItem key={id} id={id} windowId={windowId} />
+            ))}
+          </ScrollView>
+        )}
+        <PopoverSeparator />
+        <FooterButton
+          title="View all downloads"
+          onPress={() => {
+            setOpen(false);
+            openInternalPage("downloads", windowId);
+          }}
+        />
+      </DownloadsFrame>
+    </View>
+  );
+}
+
+type FrameHover = { onMouseEnter?: () => void; onMouseLeave?: () => void };
+
+export function DownloadsFrame({ closing, onClosed, footer, children, ...hover }: { closing: boolean; onClosed: () => void; footer: boolean; children: ReactNode } & FrameHover) {
+  const theme = useTheme();
   const top = useTabLayout() === "top";
   const addressBar = useAddressBarInSidebar();
-  const setOpen = (value: boolean) => useBrowser.getState().setDownloadsOpen(windowId, value);
   const appear = useRef(new Animated.Value(0)).current;
   const closed = useRef(onClosed);
   closed.current = onClosed;
@@ -166,74 +210,51 @@ function DownloadsPanel({ windowId, closing, onClosed }: { windowId: string; clo
   }, [closing]);
 
   return (
-    <View pointerEvents={closing ? "none" : "auto"} style={StyleSheet.absoluteFill}>
-      <Pressable style={StyleSheet.absoluteFill} onPress={() => setOpen(false)} />
-      <Animated.View
-        style={{
-          position: "absolute",
-          ...(addressBar ? { bottom: PROFILE_DOTS_HEIGHT + 2 } : { top: 44 }),
-          ...(top ? { right: 8 } : { left: 10 }),
-          opacity: appear,
-          transformOrigin: `${addressBar ? "bottom" : "top"} ${top ? "right" : "left"}`,
-          transform: [
-            { scale: appear.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) },
-            { translateY: appear.interpolate({ inputRange: [0, 1], outputRange: addressBar ? [4, 0] : [-4, 0] }) },
-          ],
-        }}
+    <Animated.View
+      {...hover}
+      pointerEvents={closing ? "none" : "auto"}
+      style={{
+        position: "absolute",
+        ...(addressBar ? { bottom: PROFILE_DOTS_HEIGHT + 2 } : { top: 44 }),
+        ...(top ? { right: 8 } : { left: 10 }),
+        opacity: appear,
+        transformOrigin: `${addressBar ? "bottom" : "top"} ${top ? "right" : "left"}`,
+        transform: [
+          { scale: appear.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) },
+          { translateY: appear.interpolate({ inputRange: [0, 1], outputRange: addressBar ? [4, 0] : [-4, 0] }) },
+        ],
+      }}
+    >
+      <Surface
+        fill={hex(theme.dark ? "rgba(38,36,37,0.94)" : "rgba(252,251,252,0.96)")}
+        cornerRadius={PANEL.radius}
+        borderColor={hex(theme.dark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.12)")}
+        borderWidth={0.5}
+        shadowColor="#000000"
+        shadowOpacity={theme.dark ? 0.45 : 0.16}
+        shadowRadius={18}
+        shadowOffset={[0, 8]}
+        style={{ width: WIDTH, paddingTop: INK_INSET - HEADER_CAP_TOP, paddingBottom: footer ? INK_INSET - FOOTER_TEXT_DROP : PANEL.rowInset }}
       >
-        <Surface
-          fill={hex(theme.dark ? "rgba(38,36,37,0.94)" : "rgba(252,251,252,0.96)")}
-          cornerRadius={PANEL.radius}
-          borderColor={hex(theme.dark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.12)")}
-          borderWidth={0.5}
-          shadowColor="#000000"
-          shadowOpacity={theme.dark ? 0.45 : 0.16}
-          shadowRadius={18}
-          shadowOffset={[0, 8]}
-          style={{ width: WIDTH, paddingTop: INK_INSET - HEADER_CAP_TOP, paddingBottom: INK_INSET - FOOTER_TEXT_DROP }}
-        >
-          <VisualEffect material="menu" cornerRadius={PANEL.radius} style={StyleSheet.absoluteFill} />
-          <View style={{ ...StyleSheet.absoluteFillObject, borderRadius: PANEL.radius, backgroundColor: theme.dark ? "rgba(38,36,37,0.72)" : "rgba(252,251,252,0.7)" }} />
-          <View style={{ flexDirection: "row", alignItems: "center", paddingLeft: PANEL.inset, paddingRight: PANEL.inset - TEXT_BUTTON_PAD, height: HEADER }}>
-            <Text style={{ flex: 1, fontSize: PANEL.subtitleSize, fontWeight: "600", letterSpacing: 0.4, color: theme.textSecondary }}>
-              RECENT DOWNLOADS
-            </Text>
-            {clearable && (
-              <TextButton
-                title="Clear"
-                onPress={() => {
-                  setOpen(false);
-                  useBrowser.getState().clearDownloads(windowId);
-                }}
-              />
-            )}
-          </View>
-          {ids.length === 0 ? (
-            <View style={{ height: PANEL.rowHeight, paddingHorizontal: PANEL.inset, justifyContent: "center" }}>
-              <Text style={{ fontSize: PANEL.titleSize, color: theme.textSecondary }}>No downloads yet</Text>
-            </View>
-          ) : (
-            <ScrollView style={{ maxHeight: VISIBLE_ROWS * ROW }} contentContainerStyle={{ paddingHorizontal: PANEL.rowInset }}>
-              {ids.map((id) => (
-                <DownloadRowItem key={id} id={id} windowId={windowId} />
-              ))}
-            </ScrollView>
-          )}
-          <PopoverSeparator />
-          <FooterButton
-            title="View all downloads"
-            onPress={() => {
-              setOpen(false);
-              openInternalPage("downloads", windowId);
-            }}
-          />
-        </Surface>
-      </Animated.View>
+        <VisualEffect material="menu" cornerRadius={PANEL.radius} style={StyleSheet.absoluteFill} />
+        <View style={{ ...StyleSheet.absoluteFillObject, borderRadius: PANEL.radius, backgroundColor: theme.dark ? "rgba(38,36,37,0.72)" : "rgba(252,251,252,0.7)" }} />
+        {children}
+      </Surface>
+    </Animated.View>
+  );
+}
+
+export function DownloadsHeader({ children }: { children?: ReactNode }) {
+  const theme = useTheme();
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", paddingLeft: PANEL.inset, paddingRight: PANEL.inset - TEXT_BUTTON_PAD, height: HEADER }}>
+      <Text style={{ flex: 1, fontSize: PANEL.subtitleSize, fontWeight: "600", letterSpacing: 0.4, color: theme.textSecondary }}>RECENT DOWNLOADS</Text>
+      {children}
     </View>
   );
 }
 
-function TextButton({ title, onPress }: { title: string; onPress: () => void }) {
+export function TextButton({ title, onPress }: { title: string; onPress: () => void }) {
   const theme = useTheme();
   const { hovered, hoverProps } = useHover();
   return (
@@ -277,14 +298,16 @@ function RowButton({ icon, onPress, tooltip }: { icon: string; onPress: () => vo
   return <IconButton icon={icon} size={PANEL.iconSize} box={ROW_BUTTON} radius={6} onPress={onPress} tooltip={tooltip} />;
 }
 
-const DownloadRowItem = memo(function DownloadRowItem({ id, windowId }: { id: string; windowId: string }) {
+type RowPress = { onHold?: () => void; onRelease?: () => void; onOpened?: () => void };
+
+export const DownloadRowItem = memo(function DownloadRowItem({ id, windowId, ...press }: { id: string; windowId: string } & RowPress) {
   const live = useBrowser((s) => s.downloads.find((x) => x.id === id));
   const last = useRef(live);
   if (live) last.current = live;
-  return last.current ? <DownloadRow d={last.current} windowId={windowId} /> : null;
+  return last.current ? <DownloadRow d={last.current} windowId={windowId} {...press} /> : null;
 });
 
-function DownloadRow({ d, windowId }: { d: Download; windowId: string }) {
+function DownloadRow({ d, windowId, onHold, onRelease, onOpened }: { d: Download; windowId: string } & RowPress) {
   const theme = useTheme();
   const { hovered, hoverProps } = useHover();
   const exists = d.state !== "finished" || fileExists(d.path);
@@ -308,7 +331,15 @@ function DownloadRow({ d, windowId }: { d: Download; windowId: string }) {
     <View {...hoverProps}>
       <MouseArea path={done ? d.path : null}>
         <ContextMenuArea onContextMenu={() => void downloadMenu(d, windowId)}>
-          <Pressable onPress={() => done && void openFile(d.path)}>
+          <Pressable
+            onPressIn={done ? onHold : undefined}
+            onPressOut={done ? onRelease : undefined}
+            onPress={() => {
+              if (!done) return;
+              void openFile(d.path);
+              onOpened?.();
+            }}
+          >
             {({ pressed }) => (
               <View
                 style={{

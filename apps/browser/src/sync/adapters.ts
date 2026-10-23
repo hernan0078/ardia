@@ -40,6 +40,8 @@ export const SYNCED_SETTINGS = [
   "autoPictureInPicture",
   "videoUpscaling",
   "sidebarMediaControls",
+  "peekRecentDownloads",
+  "alwaysShowDownloadsButton",
   "showFullUrl",
   "bookmarksBar",
   "appearance",

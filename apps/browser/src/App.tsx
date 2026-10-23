@@ -8,6 +8,7 @@ import { EditBookmarkDialog } from "./components/bookmarks/EditBookmarkDialog";
 import { ExtensionOverlays } from "./components/extensions/ExtensionOverlays";
 import { ExtensionSidePanel } from "./components/extensions/SidePanel";
 import { DownloadMagnet, DownloadsPopover } from "./components/Downloads";
+import { DownloadsPeek } from "./components/DownloadsPeek";
 import { UtilityWindow } from "./components/settings/UtilityWindow";
 import { isUtilityWindowId } from "./components/settings/windows";
 import { OnboardingOverlay } from "./components/onboarding";
@@ -83,6 +84,7 @@ function BrowserWindow() {
       )}
       {topTabs && !showStrip && <TopStripPeek windowWidth={width} enabled={!fullscreen} />}
       <CommandPanel windowWidth={width} />
+      <DownloadsPeek />
       <DownloadsPopover />
       <ExtensionOverlays />
       <DownloadMagnet />

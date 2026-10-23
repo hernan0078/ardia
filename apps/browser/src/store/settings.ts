@@ -45,6 +45,8 @@ export type Settings = {
   autoPictureInPicture: boolean;
   videoUpscaling: boolean;
   sidebarMediaControls: boolean;
+  peekRecentDownloads: boolean;
+  alwaysShowDownloadsButton: boolean;
   sidebarWidth: number;
   showSidebarButton: boolean;
   batterySaverWhen: BatterySaverWhen;
@@ -99,6 +101,8 @@ export const DEFAULT_SETTINGS: Settings = {
   autoPictureInPicture: true,
   videoUpscaling: true,
   sidebarMediaControls: true,
+  peekRecentDownloads: true,
+  alwaysShowDownloadsButton: false,
   sidebarWidth: 190,
   showSidebarButton: true,
   batterySaverWhen: "lowBattery",
