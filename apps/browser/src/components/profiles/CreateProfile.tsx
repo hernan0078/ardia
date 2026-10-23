@@ -1,4 +1,4 @@
-import { Symbol } from "@ardia/shell";
+import { showMenu, Symbol } from "@ardia/shell";
 import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { create } from "zustand";
@@ -9,6 +9,7 @@ import { dataGroups, unusedProfileColor } from "../../store/profiles";
 import type { ProfileColor } from "../../store/types";
 import { Button, Sheet, TextField, Toggle, useFormColors } from "../settings/controls";
 import { closeSettingsSheet, showSettingsSheet } from "../settings/sheet";
+import { iconMenuItems, ProfileBadge } from "./icons";
 
 export type CreateProfilePreset = { name?: string; shareWith?: string };
 
@@ -56,13 +57,18 @@ function CreateProfileSheet({ windowId, preset, onDone }: { windowId: string | n
   const current = useBrowser((s) => (windowId && !s.windows[windowId]?.incognito ? s.windows[windowId]!.profileId : s.settings.defaultProfileId));
   const [name, setName] = useState(preset.name ?? "");
   const [color, setColor] = useState<ProfileColor>(() => unusedProfileColor(useBrowser.getState().profiles));
+  const [icon, setIcon] = useState<string | null>(null);
   const [share, setShare] = useState(!!preset.shareWith);
   const [shareWith, setShareWith] = useState(preset.shareWith ?? current);
   const selectedGroup = groups.find((g) => g.profileIds.includes(shareWith)) ?? groups[0];
 
   const submit = () => {
-    const id = useBrowser.getState().createProfile({ name, color, shareWith: share ? (selectedGroup?.profileIds[0] ?? null) : null });
+    const id = useBrowser.getState().createProfile({ name, color, icon, shareWith: share ? (selectedGroup?.profileIds[0] ?? null) : null });
     onDone(id);
+  };
+  const pickIcon = async () => {
+    const choice = await showMenu(iconMenuItems(icon));
+    if (choice?.startsWith("icon:")) setIcon(choice.slice("icon:".length) || null);
   };
   const single = groups.length === 1;
 
@@ -73,7 +79,15 @@ function CreateProfileSheet({ windowId, preset, onDone }: { windowId: string | n
         Profiles separate your logins, cookies, passwords, extensions, history and bookmarks.
       </Text>
 
-      <TextField value={name} onChangeText={setName} placeholder="Profile name" autoFocus onSubmit={submit} onEscape={() => onDone(null)} style={{ marginTop: 16 }} />
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 16 }}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Choose profile icon" tooltip="Choose profile icon" onPress={() => void pickIcon()}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+            <ProfileBadge profile={{ name: name.trim() || "Profile", color, icon }} size={32} />
+            <Symbol name="chevron.down" size={9} weight="semibold" color={theme.textSecondary} style={{ width: 10, height: 12 }} />
+          </View>
+        </Pressable>
+        <TextField value={name} onChangeText={setName} placeholder="Profile name" autoFocus onSubmit={submit} onEscape={() => onDone(null)} style={{ flex: 1 }} />
+      </View>
 
       <View style={{ flexDirection: "row", gap: 7, marginTop: 12 }}>
         {(Object.keys(PROFILE_COLORS) as ProfileColor[]).map((c) => (
