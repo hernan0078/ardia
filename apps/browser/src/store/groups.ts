@@ -31,11 +31,55 @@ export function syncGroupOrder(groups: Record<string, TabGroup>, window: Browser
   return changed ? next : groups;
 }
 
+const rowKey = (t: Tab) => `${t.profileId}\u0001${t.pinKey ?? t.id}`;
+const isRow = (t: Tab | undefined): t is Tab => !!t?.pinned && !!t.pinnedAsRow;
+
 export function orderSections(ids: string[], tabs: Record<string, Tab>, groups: Record<string, TabGroup>): string[] {
-  const pinnedGroup = new Set(Object.values(groups).filter((g) => g.pinned).flatMap((g) => g.tabIds));
-  const rank = (id: string) => (tabs[id]?.pinned ? (tabs[id]!.pinnedAsRow ? 1 : 0) : pinnedGroup.has(id) ? 2 : 3);
-  const out = [0, 1, 2, 3].flatMap((r) => ids.filter((id) => rank(id) === r));
+  const pinnedGroupOf = new Map<string, TabGroup>();
+  for (const g of Object.values(groups)) if (g.pinned) for (const id of g.tabIds) pinnedGroupOf.set(id, g);
+  const rank = (id: string) => (tabs[id]?.pinned ? (tabs[id]!.pinnedAsRow ? 1 : 0) : pinnedGroupOf.has(id) ? 1 : 2);
+  const rows = new Set(ids.filter((id) => isRow(tabs[id])).map((id) => rowKey(tabs[id]!)));
+  const above = new Map<string, string[]>();
+  const pinnedRows: string[] = [];
+  const trailing: string[] = [];
+  for (const id of ids) {
+    if (rank(id) !== 1) continue;
+    const g = isRow(tabs[id]) ? undefined : pinnedGroupOf.get(id);
+    const anchor = g?.beforeRow !== undefined ? `${g.profileId}\u0001${g.beforeRow}` : null;
+    if (!g) pinnedRows.push(id);
+    else if (anchor && rows.has(anchor)) above.set(anchor, [...(above.get(anchor) ?? []), id]);
+    else trailing.push(id);
+  }
+  const takeAbove = (id: string) => {
+    const key = rowKey(tabs[id]!);
+    const members = above.get(key) ?? [];
+    above.delete(key);
+    return members;
+  };
+  const out = [
+    ...ids.filter((id) => rank(id) === 0),
+    ...pinnedRows.flatMap((id) => [...takeAbove(id), id]),
+    ...trailing,
+    ...ids.filter((id) => rank(id) === 2),
+  ];
   return out.every((id, i) => id === ids[i]) ? ids : out;
+}
+
+export function anchorPinnedGroups(ids: string[], tabs: Record<string, Tab>, groups: Record<string, TabGroup>, windowId: string): Record<string, TabGroup> {
+  const at = new Map(ids.map((id, i) => [id, i]));
+  let next = groups;
+  for (const g of Object.values(groups)) {
+    if (!g.pinned || g.windowId !== windowId) continue;
+    const last = g.tabIds.reduce((max, id) => Math.max(max, at.get(id) ?? -1), -1);
+    if (last < 0) continue;
+    const row = ids.slice(last + 1).map((id) => tabs[id]).find((t) => isRow(t) && t.profileId === g.profileId);
+    const beforeRow = row ? (row.pinKey ?? row.id) : undefined;
+    if (beforeRow === g.beforeRow) continue;
+    if (next === groups) next = { ...groups };
+    const { beforeRow: _, ...rest } = g;
+    next[g.id] = beforeRow === undefined ? rest : { ...rest, beforeRow };
+  }
+  return next;
 }
 
 export function placeBlock(tabIds: string[], block: string[]): string[] {

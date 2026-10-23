@@ -49,7 +49,7 @@ export function parkWindowPins(parked: Record<string, ParkedPins>, w: BrowserWin
         homes.push(homeOf(tile));
         tiles.push(tile);
       } else if (g) {
-        if (!groups.some((x) => x.id === pinKeyOf(g))) groups.push({ id: pinKeyOf(g), name: g.name, icon: g.icon, color: g.color, collapsed: g.collapsed });
+        if (!groups.some((x) => x.id === pinKeyOf(g))) groups.push({ id: pinKeyOf(g), name: g.name, icon: g.icon, color: g.color, collapsed: g.collapsed, ...(g.beforeRow ? { beforeRow: g.beforeRow } : {}) });
         members.push({ ...snapshotTab(t), ...pending(t, false), id: pinKeyOf(t), groupId: pinKeyOf(g) });
       }
     }

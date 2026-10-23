@@ -34,7 +34,7 @@ const memberSig = (t: Tab) => `${pinKeyOf(t)}\u0001${t.customTitle ?? ""}\u0001$
 const signature = (x: Section) =>
   [
     ...x.tiles.map(tileSig),
-    ...x.groups.map(({ group: g, members }) => `G${pinKeyOf(g)}\u0001${g.name}\u0001${g.icon ?? ""}\u0001${g.color ?? ""}\u0002${members.map(memberSig).join("\u0002")}`),
+    ...x.groups.map(({ group: g, members }) => `G${pinKeyOf(g)}\u0001${g.name}\u0001${g.icon ?? ""}\u0001${g.color ?? ""}\u0001${g.beforeRow ?? ""}\u0002${members.map(memberSig).join("\u0002")}`),
   ].join("\n");
 
 function profilesOf(s: Pick<BrowserState, "tabs">, w: BrowserWindow): Set<string> {
@@ -159,7 +159,7 @@ function conform(s: BrowserState, windowId: string, profileId: string, spec: Spe
     const ids = members.map((m) => reuse(m, false));
     memberIds.push(...ids);
     const base: TabGroup = own ?? { id, windowId, profileId, name: "", icon: null, color: null, collapsed: src.collapsed, pinned: true, tabIds: [], createdAt: Date.now() };
-    groups[id] = { ...base, ...keyField(id, key), name: src.name, icon: src.icon, color: src.color, pinned: true, tabIds: ids };
+    groups[id] = { ...base, ...keyField(id, key), name: src.name, icon: src.icon, color: src.color, beforeRow: src.beforeRow, pinned: true, tabIds: ids };
   }
   const placed = new Set([...tileIds, ...memberIds]);
   for (const { group } of cur.groups) {
@@ -249,7 +249,7 @@ export function settleMovedPins(before: BrowserState, after: BrowserState, moved
     for (const g of pinnedGroupsOf(before)) {
       if (g.windowId === sourceId && g.tabIds.some((id) => swap.has(id))) groups[g.id] = { ...g, ...groups[g.id], tabIds: keep(g.tabIds) };
     }
-    windows[sourceId] = { ...src, tabIds: pinnedFirst(keep(before.windows[sourceId]!.tabIds), tabs) };
+    windows[sourceId] = { ...src, tabIds: orderSections(pinnedFirst(keep(before.windows[sourceId]!.tabIds), tabs), tabs, groups) };
   }
   const target = windows[targetId]!;
   let tabIds = [...target.tabIds];

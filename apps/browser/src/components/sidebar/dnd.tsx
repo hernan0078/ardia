@@ -48,6 +48,8 @@ export const PIN_SLOT = layout.pinnedHeight + TILE_GAP;
 const EDGE = 28;
 const spring = (value: Animated.Value, toValue: number) => Animated.spring(value, { toValue, ...SLIDE });
 
+const inPinnedSection = (i: Item) => (i.section === "pinnedRows" || i.section === "pinnedGroups") && !i.parentGroup && i.kind !== "tail";
+
 const inside = (f: Frame, x: number, y: number, slop = 0) => x >= f.x - slop && x <= f.x + f.w + slop && y >= f.y - slop && y <= f.y + f.h + slop;
 const measure = (view: View | null): Promise<Frame | null> =>
   view
@@ -393,10 +395,10 @@ class DragController {
         drop = { type: "tabs", placement: { pinned: false, groupId: box.groupId!, beforeId: firstTab(before) } };
         gapKey = before?.key ?? `tail:group:${box.groupId}`;
       } else if (tabsDrag && this.overPinnedRows(y)) {
-        const rows = live.filter((i) => i.section === "pinnedRows" && i.kind === "row").sort(byY);
-        const before = rows.find((r) => cy(r) > y && firstTab(r) !== null);
-        drop = { type: "tabs", placement: { pinned: true, row: true, beforeId: firstTab(before) } };
-        gapKey = before?.key ?? "tail:pinnedRows";
+        const blocks = live.filter(inPinnedSection).sort(byY);
+        const before = blocks.find((b) => cy(b) > y && firstTab(b) !== null);
+        drop = { type: "tabs", placement: { pinned: true, row: true, beforeId: firstTab(before), ...(before ? {} : { belowPinnedGroups: true }) } };
+        gapKey = before?.key ?? "tail:pinnedGroups";
       } else if ((onto = tabsDrag && !this.external ? this.ontoTarget(live, y) : null)) {
         drop = { type: "onto", targetId: this.items.get(onto)!.tabIds[0]! };
         gapKey = this.gapKey;
@@ -405,7 +407,7 @@ class DragController {
         const list = this.at(this.regionFrames.get("list") ?? null);
         const pinned = source.kind === "group" && !!list && y < list.y;
         const section: Section = pinned ? "pinnedGroups" : "list";
-        const blocks = live.filter((i) => i.section === section && !i.parentGroup && i.kind !== "tail" && i.kind !== "tile").sort(byY);
+        const blocks = live.filter((i) => (pinned ? inPinnedSection(i) : i.section === section && !i.parentGroup && i.kind !== "tail" && i.kind !== "tile")).sort(byY);
         const before = blocks.find((b) => cy(b) > y && firstTab(b) !== null);
         gapKey = before?.key ?? `tail:${section}`;
         drop =

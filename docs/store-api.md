@@ -32,6 +32,11 @@ modules before using them — this is a summary from the agent that built it.
   that differ at launch). Copies it makes are unloaded; a copy it drops goes if it never loaded, else stays as a regular
   tab. Moving a pinned tab between windows (`moveTabsInto`, an extension's move) leaves a copy behind
   (`settleMovedPins`). Sync keys pins by `pinKey` and changes the home window's copy.
+- A window's `tabIds` run: pinned tiles, then the pinned rows with the pinned groups among them, then the list
+  (`orderSections`, store/groups.ts). A pinned group sits right above the pinned row whose `pinKey` is its `beforeRow`, or
+  below every row when that's unset or the row is gone. Moves that place pinned rows or groups set it from where they
+  land (`anchorPinnedGroups` in `placing`, `moveGroup` and `moveTab`); anything else that changes `tabIds` keeps it by
+  ending in `orderSections`. Mirrored and parked with the group; not synced yet.
 - UI: `ui.focusedWindowId`, `ui.focusOrder`, `ui.lastProfileId` (the regular profile of the window used last, a private
   window counting as its `originalProfileId`; saved with the session; read it through `lastActiveProfile(s)`, store/small.ts),
   `ui.appDark`, `windowUi[windowId]` (command panel, downloads popover), `find[tabId]`.

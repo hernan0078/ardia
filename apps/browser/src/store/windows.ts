@@ -17,6 +17,7 @@ import {
   viewTabIds,
   without,
 } from "./model";
+import { orderSections } from "./groups";
 import { nextPinChoice, placeChoiceKey, restoringGroup } from "./organize";
 import { adoptParkedPins, parkWindowPins } from "./parkedPins";
 import { settleMovedPins } from "./pinMirror";
@@ -105,7 +106,7 @@ export function moveTabsInto(s: BrowserState, ids: string[], targetId: string): 
     ...next,
     tabs,
     live,
-    windows: { ...next.windows, [targetId]: { ...w, tabIds: pinnedFirst([...w.tabIds, ...moving.map((t) => t.id)], tabs), activeTabIds } },
+    windows: { ...next.windows, [targetId]: { ...w, tabIds: orderSections(pinnedFirst([...w.tabIds, ...moving.map((t) => t.id)], tabs), tabs, next.groups), activeTabIds } },
   };
   for (const id of sources) {
     const src = next.windows[id];
@@ -267,7 +268,7 @@ export const createWindowsSlice: StateCreator<BrowserState, [], [], WindowsSlice
       tabs,
       pinChoices,
       live: { ...next.live, [tabId]: IDLE_LIVE },
-      windows: { ...next.windows, [w.id]: { ...base, tabIds: pinnedFirst(tabIds, tabs) } },
+      windows: { ...next.windows, [w.id]: { ...base, tabIds: orderSections(pinnedFirst(tabIds, tabs), tabs, next.groups) } },
       windowOrder: next.windowOrder.includes(w.id) ? next.windowOrder : s.windowOrder,
     };
     set(apply(next, activated(next, tabId)));

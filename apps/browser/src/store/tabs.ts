@@ -3,7 +3,7 @@ import type { StateCreator } from "zustand";
 import { fromLegacyUrl } from "../legacy";
 import { startNavigation } from "../lib/earlyNavigate";
 import type { BrowserState } from "./browser";
-import { leaveGroups, syncGroupOrder } from "./groups";
+import { anchorPinnedGroups, leaveGroups, orderSections, syncGroupOrder } from "./groups";
 import {
   activeTabId,
   closesWindow,
@@ -286,7 +286,7 @@ export function withNewTab(s: BrowserState, windowId: string, o: NewTabOptions =
   tabIds.splice(Math.min(at, tabIds.length), 0, tab.id);
   const window: BrowserWindow = {
     ...w,
-    tabIds: pinnedFirst(tabIds, tabs),
+    tabIds: orderSections(pinnedFirst(tabIds, tabs), tabs, s.groups),
     activeTabIds: w.activeTabIds[profileId] ? w.activeTabIds : { ...w.activeTabIds, [profileId]: tab.id },
   };
   let next: BrowserState = {
@@ -474,7 +474,7 @@ export const createTabsSlice: StateCreator<BrowserState, [], [], TabsSlice> = (s
       let k = 0;
       const tabIds = w.tabIds.map((t) => (inSection(t) ? moved[k++]! : t));
       const window = { ...w, tabIds };
-      return { windows: { ...s.windows, [w.id]: window }, groups: syncGroupOrder(s.groups, window) };
+      return { windows: { ...s.windows, [w.id]: window }, groups: syncGroupOrder(anchorPinnedGroups(tabIds, s.tabs, s.groups, w.id), window) };
     });
   },
 });

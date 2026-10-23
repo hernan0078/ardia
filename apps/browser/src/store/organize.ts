@@ -1,7 +1,7 @@
 import type { StateCreator } from "zustand";
 import type { BrowserState } from "./browser";
 import { autoGroupName } from "./groupNames";
-import { leaveGroups, orderSections, placeBlock, syncGroupOrder } from "./groups";
+import { anchorPinnedGroups, leaveGroups, orderSections, placeBlock, syncGroupOrder } from "./groups";
 import { activeTabId, bookmarkProfileId, inPinnedContainer, isIncognitoProfile, newId, pendingRestore, restoreId, snapshotTab, viewTabIds, without } from "./model";
 import { activated, apply, removeTabs, withNewTab } from "./tabs";
 import type { BrowserWindow, ClosedGroup, ClosedTab, Tab, TabGroup } from "./types";
@@ -11,6 +11,7 @@ export type TabPlacement = {
   row?: boolean;
   beforeId?: string | null;
   groupId?: string | null;
+  belowPinnedGroups?: boolean;
 };
 
 export type GroupPlacement = { pinned: boolean; beforeId?: string | null };
@@ -464,7 +465,8 @@ export function placing(s: BrowserState, ids: string[], p: TabPlacement): Browse
     at = kept.length ? rest.indexOf(kept.at(-1)!) + 1 : Math.min(order.get(target.tabIds[0]!)!, rest.length);
   } else if (p.pinned) {
     const toRow = !!tabs[moving[0]!]!.pinnedAsRow;
-    at = rest.reduce((last, id, i) => (tabs[id]?.pinned && (toRow || !tabs[id]!.pinnedAsRow) ? i + 1 : last), 0);
+    const lastOfSection = (id: string) => (tabs[id]?.pinned && (toRow || !tabs[id]!.pinnedAsRow)) || (toRow && !!p.belowPinnedGroups && !!pinnedGroupOf(id));
+    at = rest.reduce((last, id, i) => (lastOfSection(id) ? i + 1 : last), 0);
   } else at = rest.length;
   rest.splice(at, 0, ...moving);
 
@@ -475,6 +477,7 @@ export function placing(s: BrowserState, ids: string[], p: TabPlacement): Browse
   }
   let tabIds = rest;
   for (const g of Object.values(groups)) if (g.windowId === w.id) tabIds = placeBlock(tabIds, tabIds.filter((id) => g.tabIds.includes(id)));
+  groups = anchorPinnedGroups(tabIds, tabs, groups, w.id);
   tabIds = orderSections(tabIds, tabs, groups);
   const window: BrowserWindow = { ...w, tabIds };
   const pinChoices = chosen ? { ...s.pinChoices, [first.profileId]: chosen } : s.pinChoices;
@@ -598,7 +601,8 @@ export const createOrganizeSlice: StateCreator<BrowserState, [], [], OrganizeSli
       const g = s.groups[groupId];
       const w = g && s.windows[g.windowId];
       if (!g || !w || (p.beforeId && g.tabIds.includes(p.beforeId))) return {};
-      const groups = { ...s.groups, [groupId]: { ...g, pinned: p.pinned } };
+      const { beforeRow: _, ...unanchored } = g;
+      let groups = { ...s.groups, [groupId]: p.pinned ? { ...g, pinned: true } : { ...unanchored, pinned: false } };
       let pinChoices = s.pinChoices;
       if (p.pinned && !g.pinned && !isIncognitoProfile(g.profileId)) {
         const mine = { ...pinChoices[g.profileId], [groupChoiceKey(g.pinKey ?? g.id)]: nextPinChoice() };
@@ -615,6 +619,7 @@ export const createOrganizeSlice: StateCreator<BrowserState, [], [], OrganizeSli
         at = rest.reduce((last, id, i) => (s.tabs[id]?.pinned || pinnedGroup.has(id) ? i + 1 : last), 0);
       } else at = rest.length;
       rest.splice(at, 0, ...g.tabIds);
+      groups = anchorPinnedGroups(rest, s.tabs, groups, w.id);
       const window = { ...w, tabIds: orderSections(rest, s.tabs, groups) };
       return { groups: syncGroupOrder(groups, window), windows: { ...s.windows, [w.id]: window }, pinChoices };
     });

@@ -1,7 +1,7 @@
 import { create, type StateCreator } from "zustand";
 import { createBookmarksSlice, ensureRoots, type BookmarksSlice } from "./bookmarks";
 import { changedIds } from "./changes";
-import { createGroupsSlice, type GroupsSlice } from "./groups";
+import { createGroupsSlice, orderSections, type GroupsSlice } from "./groups";
 import { createHistorySlice, type HistorySlice } from "./history";
 import { IDLE_LIVE, isIncognitoProfile, pinnedFirst } from "./model";
 import { createOrganizeSlice, forgetClosedPrivateWindows, keptDeletedGroups, livePinTable, notePinChoices, type OrganizeSlice } from "./organize";
@@ -130,6 +130,7 @@ export const useBrowser = create<BrowserState>()(transactions.middleware(batched
         .filter((g) => g.tabIds.length)
         .map((g) => [g.id, g]),
     );
+    for (const w of Object.values(windows)) w.tabIds = orderSections(w.tabIds, tabs, groups);
     const splits = sanitizeSplits(data.splits ?? {}, tabs);
     let bookmarks = data.bookmarks ?? s.bookmarks;
     for (const id of profileOrder) bookmarks = ensureRoots(bookmarks, id)[0];

@@ -99,6 +99,7 @@ export type TabGroup = {
   autoUngroup?: boolean;
   pinnedOpenerId?: string;
   pinKey?: string;
+  beforeRow?: string;
 };
 
 export type SplitView = {
@@ -161,7 +162,7 @@ export type ClosedWindow = {
 
 export type ParkedPins = {
   tabs: (TabSnapshot & { id: string; groupId: string | null; restoreFrom?: string })[];
-  groups: Pick<TabGroup, "id" | "name" | "icon" | "color" | "collapsed">[];
+  groups: (Pick<TabGroup, "id" | "name" | "icon" | "color" | "collapsed"> & Partial<Pick<TabGroup, "beforeRow">>)[];
 };
 
 export type ClosedGroup = {
