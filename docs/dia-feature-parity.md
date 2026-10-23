@@ -280,7 +280,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | Documents live folder (Drive, Notion, Confluence) | ✓ | ✅ | same: user-supplied Google OAuth client / Notion / Confluence tokens |
 | Unread pip on live folders | ✓ | ✅ | |
 | Chat with a live folder | ✓ | ⏸ | |
-| Shared split view in sidebar | ✓ | ✅ | one row per split, a segment per pane |
+| Shared split view in sidebar | ✓ | ✅ | one row per split, a segment per pane A single tab can be dropped on the right-edge Split target of a tab or two-pane split row to reuse it in a split; the row center still groups tabs. Three panes maximum. See `docs/arc-interaction-craft.md` for verification status. |
 
 ## 4. Sidebar & layout
 | Feature | Dia | Ardia | Gap |
@@ -327,7 +327,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 |---|---|---|---|
 | Split view up to 3 panes, horizontal/vertical, add bottom split | ✓ | ✅ | each pane is a Chrome tab at its own size; Chrome's dialogs follow the focused pane (ledger "Split view") |
 | Open Split Pane ⌃⇧=, focus next/prev ⌃⇧] / ⌃⇧[ | ✓ | ✅ | |
-| Drag tab to edge to split; ⌥‑click ➕ opens split NTP; ⇧⌥‑click link opens right pane | ✓ | ✅ | Dia's split targets from the sidebar and the top strip alike ("Add left split" / "Add right split" at each pane's sides: slide in, grow, the one under the dragged card takes the accent and leans to the pointer; the tab shows as a small window under the pointer; `dia-spec.md` › Dragging tabs and split targets). The page showing the dragged tab alone splits with the tab used before it |
+| Drag tab to edge to split; ⌥‑click ➕ opens split NTP; ⇧⌥‑click link opens right pane | ✓ | ✅ | Dia's split targets from the sidebar and the top strip alike ("Add left split" / "Add right split" at each pane's sides: slide in, grow, the one under the dragged card takes the accent and leans to the pointer; the tab shows as a small window under the pointer; `dia-spec.md` › Dragging tabs and split targets). The page showing the dragged tab alone splits with the tab used before it Top and bottom drop targets also create vertical or stacked splits from existing tabs. Targets use bounded hysteresis so a continuous drag can move between all four sides. |
 | Per‑pane nav bar / tint / close | ✓ | ✅ | unfocused panes dim |
 | Flip / convert orientation / separate all | ✓ | ✅ | + Move Pane Left/Right, Remove from Split View |
 

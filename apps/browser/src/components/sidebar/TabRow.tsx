@@ -1,6 +1,6 @@
 import { ActivitySpinner, ContextMenuArea, FadeLabel, MouseArea, Surface, Symbol } from "@ardia/shell";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { Animated, Pressable, TextInput, View, type GestureResponderEvent } from "react-native";
+import { Animated, Pressable, Text, TextInput, View, type GestureResponderEvent } from "react-native";
 import { closeTab, toggleMute } from "../../lib/actions";
 import { hex, layout, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
@@ -10,7 +10,7 @@ import { IconButton, useHover } from "../primitives";
 import { isPinnedRow } from "../../store/model";
 import { awayFromPin } from "../../store/organize";
 import { clickTab, commitRename, endRename, startRename, tabTitle } from "./actions";
-import { useDragItem, useDropOnto } from "./dnd";
+import { useDragItem, useDropOnto, useDropSplit, useSplitDropReady } from "./dnd";
 import { useShift, type EntryMotion } from "./entryMotion";
 import { dismissHover, useRowHover } from "./hover";
 import { openTabMenu } from "./menus";
@@ -19,6 +19,8 @@ import { registerRow, useSidebarUi } from "./state";
 import { TabIcon } from "./TabIcon";
 import { TabBadges } from "../media/TabBadges";
 import { useSidebarTokens } from "./tokens";
+import { usePressMotion } from "./pressMotion";
+import { SPLIT_DROP_FRACTION, SPLIT_DROP_WIDTH } from "./splitTarget";
 
 export const clickMods = (e: GestureResponderEvent) => {
   const n = e.nativeEvent as unknown as { metaKey?: boolean; shiftKey?: boolean; altKey?: boolean };
@@ -59,6 +61,9 @@ export const TabRow = memo(function TabRow({ tabId, onto = false, shift = null }
   const playingAudio = !!(flags & PLAYING);
   const loading = !!(flags & LOADING);
   const renaming = useSidebarUi((u) => u.renaming?.kind === "tab" && u.renaming.id === tabId);
+  const pressMotion = usePressMotion(renaming);
+  const splitReady = useSplitDropReady(tabId);
+  const dropSplit = useDropSplit(`t:${tabId}`);
   const { hovered, hoverProps } = useRowHover(windowId, renaming ? null : { kind: "tab", id: tabId });
   const [moved, movedRef] = useShift(shift, useCallback((v: View | null) => registerRow(windowId, tabId, v), [windowId, tabId]));
   const backToPin = useHover();
@@ -85,68 +90,73 @@ export const TabRow = memo(function TabRow({ tabId, onto = false, shift = null }
           }}
         >
           <Pressable
+            onPressIn={pressMotion.onPressIn}
+            onPressOut={pressMotion.onPressOut}
             onPress={(e) => {
               dismissHover();
               clickTab(windowId, tabId, clickMods(e));
             }}
           >
             {({ pressed }) => (
-              <Surface
-                fill={hex(onto || (!active && pressed) ? theme.tabPressed : fill)}
-                cornerRadius={10}
-                borderWidth={border}
-                borderColor={selected && !active ? hex(tokens.multiSelectedStroke) : undefined}
-                borderColors={active ? theme.tabSelectedBorder.map(hex) : undefined}
-                shadowColor={active ? hex(theme.tabSelectedShadow) : undefined}
-                shadowOpacity={active ? 1 : 0}
-                shadowRadius={theme.tabSelectedShadowRadius}
-                shadowOffset={[0, 0.5]}
-                style={{ height: layout.rowHeight, flexDirection: "row", alignItems: "center", paddingLeft: 9 - border, paddingRight: 6 - border }}
-              >
-                {resettable ? (
-                  <View {...backToPin.hoverProps}>
-                    <Pressable onPress={() => useBrowser.getState().returnToPinnedUrl(tab.id)} tooltip="Back to Pinned URL (⌘↩)">
-                      {resetting ? (
-                        <View style={{ width: 16, height: 16, alignItems: "center", justifyContent: "center" }}>
-                          <Symbol name="arrow.uturn.backward" size={11} weight="semibold" color={active ? theme.tabSelectedText : theme.textTab} style={{ width: 16, height: 16 }} />
-                        </View>
-                      ) : (
-                        <View>
-                          <TabIcon tabId={tab.id} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} profileId={tab.profileId} />
-                          <TabBadges tabId={tab.id} />
-                        </View>
-                      )}
-                    </Pressable>
-                  </View>
-                ) : (
-                  <View>
-                    <TabIcon tabId={tab.id} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} profileId={tab.profileId} />
-                    <TabBadges tabId={tab.id} />
-                  </View>
-                )}
-                {(playingAudio || tab.muted) && (
-                  <Pressable onPress={() => toggleMute(tab.id)} style={{ marginLeft: 6 }} tooltip={tab.muted ? "Unmute Site" : "Mute Site"}>
-                    <Symbol name={tab.muted ? "speaker.slash" : "speaker.wave.2"} size={12} color={theme.textTab} style={{ width: 18, height: 16 }} />
-                  </Pressable>
-                )}
-                {renaming ? (
-                  <RenameField
-                    initial={tab.customTitle ?? tab.title}
-                    placeholder={tab.title || "Tab name"}
-                    color={active ? theme.tabSelectedText : theme.textPrimary}
-                    onDone={(text) => (text === null ? endRename({ kind: "tab", id: tabId }) : commitRename({ kind: "tab", id: tabId }, text))}
-                  />
-                ) : (
-                  <FadeLabel text={title} fontSize={13} color={active ? theme.tabSelectedText : theme.textTab} style={{ flex: 1, height: 18, marginLeft: 5 }} />
-                )}
-                <HoverSlot
-                  hovered={hovered && !renaming}
-                  width={22}
-                  hover={<IconButton icon="xmark" size={10} weight="semibold" box={22} radius={6} onPress={() => void closeTab(tab.id)} tooltip="Close Tab (⌘W)" />}
+              <Animated.View style={pressMotion.style}>
+                <Surface
+                  fill={hex(onto || (!active && pressed) ? theme.tabPressed : fill)}
+                  cornerRadius={10}
+                  borderWidth={border}
+                  borderColor={selected && !active ? hex(tokens.multiSelectedStroke) : undefined}
+                  borderColors={active ? theme.tabSelectedBorder.map(hex) : undefined}
+                  shadowColor={active ? hex(theme.tabSelectedShadow) : undefined}
+                  shadowOpacity={active ? 1 : 0}
+                  shadowRadius={theme.tabSelectedShadowRadius}
+                  shadowOffset={[0, 0.5]}
+                  style={{ height: layout.rowHeight, flexDirection: "row", alignItems: "center", paddingLeft: 9 - border, paddingRight: 6 - border }}
                 >
-                  {loading && <ActivitySpinner style={{ width: 12, height: 12, marginRight: 2 }} />}
-                </HoverSlot>
-              </Surface>
+                  {resettable ? (
+                    <View {...backToPin.hoverProps}>
+                      <Pressable onPress={() => useBrowser.getState().returnToPinnedUrl(tab.id)} tooltip="Back to Pinned URL (⌘↩)">
+                        {resetting ? (
+                          <View style={{ width: 16, height: 16, alignItems: "center", justifyContent: "center" }}>
+                            <Symbol name="arrow.uturn.backward" size={11} weight="semibold" color={active ? theme.tabSelectedText : theme.textTab} style={{ width: 16, height: 16 }} />
+                          </View>
+                        ) : (
+                          <View>
+                            <TabIcon tabId={tab.id} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} profileId={tab.profileId} />
+                            <TabBadges tabId={tab.id} />
+                          </View>
+                        )}
+                      </Pressable>
+                    </View>
+                  ) : (
+                    <View>
+                      <TabIcon tabId={tab.id} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} profileId={tab.profileId} />
+                      <TabBadges tabId={tab.id} />
+                    </View>
+                  )}
+                  {(playingAudio || tab.muted) && (
+                    <Pressable onPress={() => toggleMute(tab.id)} style={{ marginLeft: 6 }} tooltip={tab.muted ? "Unmute Site" : "Mute Site"}>
+                      <Symbol name={tab.muted ? "speaker.slash" : "speaker.wave.2"} size={12} color={theme.textTab} style={{ width: 18, height: 16 }} />
+                    </Pressable>
+                  )}
+                  {renaming ? (
+                    <RenameField
+                      initial={tab.customTitle ?? tab.title}
+                      placeholder={tab.title || "Tab name"}
+                      color={active ? theme.tabSelectedText : theme.textPrimary}
+                      onDone={(text) => (text === null ? endRename({ kind: "tab", id: tabId }) : commitRename({ kind: "tab", id: tabId }, text))}
+                    />
+                  ) : (
+                    <FadeLabel text={title} fontSize={13} color={active ? theme.tabSelectedText : theme.textTab} style={{ flex: 1, height: 18, marginLeft: 5 }} />
+                  )}
+                  <HoverSlot
+                    hovered={hovered && !renaming}
+                    width={22}
+                    hover={<IconButton icon="xmark" size={10} weight="semibold" box={22} radius={6} onPress={() => void closeTab(tab.id)} tooltip="Close Tab (⌘W)" />}
+                  >
+                    {loading && <ActivitySpinner style={{ width: 12, height: 12, marginRight: 2 }} />}
+                  </HoverSlot>
+                </Surface>
+                {splitReady ? <SplitDropHint active={dropSplit} /> : null}
+              </Animated.View>
             )}
           </Pressable>
         </ContextMenuArea>
@@ -220,6 +230,8 @@ export const SplitRowItem = memo(function SplitRowItem({
   const profileId = usePageProfileId();
   const active = useBrowser((s) => tabIds.includes(s.windows[windowId]?.activeTabIds[profileId] ?? ""));
   const { hovered, hoverProps } = useRowHover(windowId, null);
+  const splitReady = useSplitDropReady(tabIds[tabIds.length - 1] ?? "");
+  const dropSplit = useDropSplit(`s:${splitId}`);
   const [moved, movedRef] = useShift(motion?.shift ?? null, useCallback((v: View | null) => registerRow(windowId, `s:${splitId}`, v), [windowId, splitId]));
   if (tabIds.length < 2) return null;
   return (
@@ -243,6 +255,7 @@ export const SplitRowItem = memo(function SplitRowItem({
             </View>
           ))}
         </Surface>
+        {splitReady ? <SplitDropHint active={dropSplit} /> : null}
       </View>
     </Animated.View>
   );
@@ -252,27 +265,40 @@ function SplitPane({ tabId, windowId }: { tabId: string; windowId: string }) {
   const theme = useTheme();
   const tab = useTab(tabId);
   const active = useIsActiveTab(tabId);
+  const pressMotion = usePressMotion();
   const { hovered, hoverProps } = useRowHover(windowId, { kind: "tab", id: tabId });
   if (!tab) return null;
   return (
     <View {...hoverProps} style={{ flex: 1, minWidth: 0 }}>
       <ContextMenuArea onContextMenu={() => void openTabMenu(windowId, tab)}>
-        <Pressable onPress={(e) => clickTab(windowId, tabId, clickMods(e))}>
-          <View
-            style={{
+        <Pressable onPressIn={pressMotion.onPressIn} onPressOut={pressMotion.onPressOut} onPress={(e) => clickTab(windowId, tabId, clickMods(e))}>
+          <Animated.View
+            style={[pressMotion.style, {
               height: layout.rowHeight - 6,
               borderRadius: 7,
               flexDirection: "row",
               alignItems: "center",
               paddingLeft: 6,
               backgroundColor: hovered && !active ? theme.rowHover : undefined,
-            }}
+            }]}
           >
             <TabIcon tabId={tab.id} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} size={14} />
             <FadeLabel text={tabTitle(tab)} fontSize={12} color={active ? theme.tabSelectedText : theme.textTab} style={{ flex: 1, height: 16, marginLeft: 5 }} />
-          </View>
+          </Animated.View>
         </Pressable>
       </ContextMenuArea>
+    </View>
+  );
+}
+
+function SplitDropHint({ active }: { active: boolean }) {
+  const theme = useTheme();
+  return (
+    <View pointerEvents="none" style={{ position: "absolute", right: 0, top: "25%", bottom: "25%", width: SPLIT_DROP_WIDTH, maxWidth: `${SPLIT_DROP_FRACTION * 100}%` }}>
+      <Surface fill={hex(active ? theme.tabPressed : theme.tabSelected)} cornerRadius={5} borderWidth={0.5} borderColor={hex(theme.accent)} style={{ flex: 1, flexDirection: "row", gap: 4, alignItems: "center", justifyContent: "center" }}>
+        <Symbol name="rectangle.split.2x1" size={11} color={active ? theme.textPrimary : theme.textTab} style={{ width: 13, height: 13 }} />
+        <Text style={{ fontSize: 10, fontWeight: "600", color: active ? theme.textPrimary : theme.textTab }}>Split</Text>
+      </Surface>
     </View>
   );
 }

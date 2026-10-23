@@ -8,10 +8,13 @@ import { useWindowId } from "../../store/hooks";
 import type { TabPlacement } from "../../store/organize";
 import { SLIDE } from "../layout/stripReorder";
 import { beginTabDrag, cancelTabDrag, endTabDrag, setDragPicture, updateTabDrag, useTabDrag } from "../layout/tabDrag";
+import { dropTabIntoSplit } from "../layout/splitActions";
+import type { SplitSide } from "../../store/splits";
 import { useClipped, type ClipSource } from "./entryMotion";
 import { suppressHover } from "./hover";
 import { overPins, pinGridHeight, pinSlot, TILE_GAP } from "./pinZone";
 import { SCROLL_EDGE } from "./ScrollEdge";
+import { overSplitTarget, splitDropSide } from "./splitTarget";
 
 type Frame = { x: number; y: number; w: number; h: number };
 type Section = "tiles" | "pinnedRows" | "pinnedGroups" | "list";
@@ -39,6 +42,7 @@ type Drop =
   | { type: "tabs"; placement: TabPlacement }
   | { type: "group"; placement: { pinned: boolean; beforeId?: string | null } }
   | { type: "onto"; targetId: string }
+  | { type: "split"; targetId: string; side: SplitSide }
   | { type: "none" };
 
 export type Ghost = { item: Item; count: number; width: number; height: number; position: Animated.ValueXY; landing?: boolean };
@@ -54,8 +58,8 @@ const measure = (view: View | null): Promise<Frame | null> =>
     ? new Promise((resolve) => view.measureInWindow((x, y, w, h) => resolve(w || h ? { x, y, w, h } : null)))
     : Promise.resolve(null);
 
-type Marks = { sources: Set<string>; dropInto: string | null; onto: string | null; landing: string | null; pins: boolean; pinCount: number };
-const NO_MARKS: Marks = { sources: new Set(), dropInto: null, onto: null, landing: null, pins: false, pinCount: 0 };
+type Marks = { sources: Set<string>; dropInto: string | null; onto: string | null; split: string | null; landing: string | null; pins: boolean; pinCount: number };
+const NO_MARKS: Marks = { sources: new Set(), dropInto: null, onto: null, split: null, landing: null, pins: false, pinCount: 0 };
 const noMarks = create<Marks>()(() => NO_MARKS);
 const NO_DROP: Drop = { type: "none" };
 
@@ -212,7 +216,7 @@ class DragController {
     const ghost = this.ghost;
     const splitDrop = commit ? endTabDrag() : (cancelTabDrag(), false);
     const spot =
-      !splitDrop && this.measured && ghost && sources.length === 1 && sources[0]!.kind !== "tile" && !this.into && drop.type !== "onto"
+      !splitDrop && this.measured && ghost && sources.length === 1 && sources[0]!.kind !== "tile" && !this.into && drop.type !== "onto" && drop.type !== "split"
         ? this.landingSpot(commit ? drop : { type: "none" })
         : null;
     if (commit && !splitDrop && this.measured && sources.length) {
@@ -221,6 +225,7 @@ class DragController {
       if (drop.type === "tabs") s.placeTabs(ids, drop.placement);
       else if (drop.type === "group" && sources[0]!.groupId) s.moveGroup(sources[0]!.groupId, drop.placement);
       else if (drop.type === "onto") s.groupOnto(ids, drop.targetId);
+      else if (drop.type === "split" && ids.length === 1) dropTabIntoSplit(ids[0]!, drop.targetId, drop.side);
     }
     this.reset();
     if (!spot || !ghost) {
@@ -269,7 +274,7 @@ class DragController {
     this.escapable = false;
     suppressHover(false);
     this.setSources(new Set());
-    this.marks.setState({ dropInto: null, onto: null, pins: false, pinCount: 0 });
+    this.marks.setState({ dropInto: null, onto: null, split: null, pins: false, pinCount: 0 });
   }
 
   private landingSpot(drop: Drop): Promise<{ x: number; y: number } | null> | null {
@@ -358,6 +363,7 @@ class DragController {
     let pitch = rowPitch;
     let into: string | null = null;
     let onto: string | null = null;
+    let split: string | null = null;
 
     const sidebar = this.viewport ?? this.rootFrame;
     const tiles = this.at(this.regionFrames.get("tiles") ?? null, this.tilesFixed);
@@ -384,7 +390,13 @@ class DragController {
             return inside(f, x, y) && (!header || y > header.y + header.h / 2);
           })
         : undefined;
-      if (box?.collapsed) {
+      const splitTarget = tabsDrag && !this.external && dragged.size === 1 ? this.splitTarget(live, x, y, [...dragged][0]!) : null;
+      if (splitTarget) {
+        drop = { type: "split", targetId: splitTarget.tabId, side: splitTarget.side };
+        split = splitTarget.key;
+        gapKey = this.gapKey;
+        pitch = this.pitch;
+      } else if (box?.collapsed) {
         drop = { type: "tabs", placement: { pinned: false, groupId: box.groupId!, beforeId: null } };
         into = box.groupId!;
       } else if (box) {
@@ -428,7 +440,7 @@ class DragController {
     this.drop = drop;
     this.into = into;
     const pins = drop.type === "tabs" && drop.placement.pinned && !drop.placement.row;
-    this.marks.setState({ dropInto: into, onto, pins, pinCount: pins ? count : 0 });
+    this.marks.setState({ dropInto: into, onto, split, pins, pinCount: pins ? count : 0 });
     if (gapKey !== this.gapKey) {
       const prev = this.gapKey && this.items.get(this.gapKey);
       if (prev && prev.section === "tiles" && this.gridBase && !this.pinning) prev.gap.setValue(0);
@@ -473,6 +485,17 @@ class DragController {
       if (i.kind !== "row" || i.parentGroup || i.section !== "list") continue;
       const f = this.shown(i);
       if (y > f.y + f.h * 0.25 && y < f.y + f.h * 0.75) return i.key;
+    }
+    return null;
+  }
+
+  private splitTarget(live: Item[], x: number, y: number, sourceId: string): { key: string; tabId: string; side: SplitSide } | null {
+    const s = useBrowser.getState();
+    for (const i of live) {
+      if ((i.kind !== "row" && i.kind !== "split") || !overSplitTarget(this.shown(i), x, y)) continue;
+      const tabId = i.tabIds.at(-1);
+      const side = tabId ? splitDropSide(s, sourceId, tabId) : null;
+      if (tabId && side) return { key: i.key, tabId, side };
     }
     return null;
   }
@@ -533,6 +556,11 @@ export function DragScope({ enabled, children }: { enabled: boolean; children: R
 export const useDragController = () => useContext(DragContext) ?? undefined;
 export const useDropInto = () => useStore(useContext(DragContext)?.marks ?? noMarks, (m) => m.dropInto);
 export const useDropOnto = (key: string) => useStore(useContext(DragContext)?.marks ?? noMarks, (m) => m.onto === key);
+export const useDropSplit = (key: string) => useStore(useContext(DragContext)?.marks ?? noMarks, (m) => m.split === key);
+export function useSplitDropReady(tabId: string) {
+  const sourceId = useTabDrag((s) => s.tabId);
+  return useBrowser((s) => splitDropSide(s, sourceId, tabId) !== null);
+}
 export const useDropPins = () => useStore(useContext(DragContext)?.marks ?? noMarks, (m) => m.pins);
 export const usePinnedCount = (tabIds: string[]) =>
   useStore(useContext(DragContext)?.marks ?? noMarks, (m) => tabIds.reduce((n, id) => n + (m.sources.has(`t:${id}`) ? 0 : 1), 0) + m.pinCount);

@@ -5,12 +5,13 @@ import { hex, useTheme } from "../../lib/theme";
 import { withAlpha } from "../sidebar/tokens";
 import { useBrowser } from "../../store/browser";
 import type { SplitView } from "../../store/types";
+import type { SplitSide } from "../../store/splits";
 import { resize, type Divider, type Rect } from "./geometry";
 import { useHover } from "../primitives";
 import { hideToast, useToasts } from "./splitActions";
 import { useWindowId } from "../../store/hooks";
 import { overPeek } from "./dockMotion";
-import { zoneHit, zoneRect, type ZoneStage } from "./splitDrop";
+import { SPLIT_SIDES, zoneHit, zoneRect, type ZoneStage } from "./splitDrop";
 import { setDropTarget, setOnPage, setTargetResolver, useTabDrag } from "./tabDrag";
 
 export function SplitDividers({ split, dividers, width, height }: { split: SplitView; dividers: Divider[]; width: number; height: number }) {
@@ -152,7 +153,7 @@ export function DropTargets({ panes, origin }: { panes: Record<string, Rect>; or
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
       {mounted.flatMap(([tabId, rect]) =>
-        (["left", "right"] as const).map((side) => (
+        SPLIT_SIDES.map((side) => (
           <DropZone
             key={`${tabId}${side}`}
             pane={rect}
@@ -160,6 +161,7 @@ export function DropTargets({ panes, origin }: { panes: Record<string, Rect>; or
             shown={shown}
             stage={target?.tabId === tabId && target.side === side ? "active" : grown ? "grown" : "rest"}
             pointerX={px}
+            pointerY={py}
             onHidden={() => setMounted([])}
           />
         )),
@@ -171,9 +173,9 @@ export function DropTargets({ panes, origin }: { panes: Record<string, Rect>; or
 const ZONE_SLIDE_MS = 110;
 const ZONE_SPRING = { stiffness: 987, damping: 56.5, mass: 1, useNativeDriver: false } as const;
 
-function DropZone({ pane, side, shown, stage, pointerX, onHidden }: { pane: Rect; side: "left" | "right"; shown: boolean; stage: ZoneStage; pointerX: number; onHidden(): void }) {
+function DropZone({ pane, side, shown, stage, pointerX, pointerY, onHidden }: { pane: Rect; side: SplitSide; shown: boolean; stage: ZoneStage; pointerX: number; pointerY: number; onHidden(): void }) {
   const theme = useTheme();
-  const rect = zoneRect(pane, side, stage, pointerX);
+  const rect = zoneRect(pane, side, stage, pointerX, pointerY);
   const anim = useRef({ x: new Animated.Value(rect.x), y: new Animated.Value(rect.y), w: new Animated.Value(rect.width), h: new Animated.Value(rect.height) }).current;
   const glow = useRef(new Animated.Value(0)).current;
   const slide = useRef(new Animated.Value(0)).current;
@@ -194,7 +196,10 @@ function DropZone({ pane, side, shown, stage, pointerX, onHidden }: { pane: Rect
       ({ finished }) => finished && !shown && onHidden(),
     );
   }, [shown]);
-  const away = side === "left" ? -(rect.x - pane.x + rect.width) : pane.x + pane.width - rect.x;
+  const horizontal = side === "left" || side === "right";
+  const away = side === "left" ? -(rect.x - pane.x + rect.width) : side === "right" ? pane.x + pane.width - rect.x : side === "top" ? -(rect.y - pane.y + rect.height) : pane.y + pane.height - rect.y;
+  const offset = slide.interpolate({ inputRange: [0, 1], outputRange: [away, 0] });
+  const symbol = { left: "rectangle.lefthalf.filled", right: "rectangle.righthalf.filled", top: "rectangle.tophalf.filled", bottom: "rectangle.bottomhalf.filled" }[side];
   const dark = theme.dark;
   const rest = dark ? "rgba(255,255,255,0.6)" : "rgba(0,0,0,0.55)";
   return (
@@ -211,7 +216,7 @@ function DropZone({ pane, side, shown, stage, pointerX, onHidden }: { pane: Rect
         backgroundColor: glow.interpolate({ inputRange: [0, 1], outputRange: [dark ? "rgba(255,236,214,0.04)" : "rgba(255,255,255,0.45)", withAlpha(theme.accent, dark ? 0.16 : 0.12)] }),
         alignItems: "center",
         justifyContent: "center",
-        transform: [{ translateX: slide.interpolate({ inputRange: [0, 1], outputRange: [away, 0] }) }],
+        transform: horizontal ? [{ translateX: offset }] : [{ translateY: offset }],
       }}
     >
       <View
@@ -227,8 +232,8 @@ function DropZone({ pane, side, shown, stage, pointerX, onHidden }: { pane: Rect
           borderColor: active ? theme.accent : dark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)",
         }}
       />
-      <Symbol name={side === "left" ? "rectangle.lefthalf.filled" : "rectangle.righthalf.filled"} size={18} color={active ? theme.accent : rest} style={{ width: 24, height: 20 }} />
-      <Text style={{ marginTop: 11, fontSize: 13, fontWeight: "600", color: active ? theme.accent : rest }}>{side === "left" ? "Add left split" : "Add right split"}</Text>
+      <Symbol name={symbol} size={18} color={active ? theme.accent : rest} style={{ width: 24, height: 20 }} />
+      <Text style={{ marginTop: 11, fontSize: 13, fontWeight: "600", color: active ? theme.accent : rest }}>{`Add ${side} split`}</Text>
     </Animated.View>
   );
 }
