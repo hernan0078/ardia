@@ -45,6 +45,7 @@ export type Settings = {
   autoPictureInPicture: boolean;
   videoUpscaling: boolean;
   sidebarMediaControls: boolean;
+  arcSidebarText: boolean;
   sidebarWidth: number;
   showSidebarButton: boolean;
   batterySaverWhen: BatterySaverWhen;
@@ -99,6 +100,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoPictureInPicture: true,
   videoUpscaling: true,
   sidebarMediaControls: true,
+  arcSidebarText: false,
   sidebarWidth: 190,
   showSidebarButton: true,
   batterySaverWhen: "lowBattery",

@@ -2,7 +2,7 @@ import { ActivitySpinner, ContextMenuArea, FadeLabel, MouseArea, Surface, Symbol
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Animated, Pressable, TextInput, View, type GestureResponderEvent } from "react-native";
 import { closeTab, toggleMute } from "../../lib/actions";
-import { hex, layout, useTheme } from "../../lib/theme";
+import { hex, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { useIsActiveTab, usePageProfileId, useTab, useWindowId } from "../../store/hooks";
 import { HoverSlot } from "../HoverSlot";
@@ -18,6 +18,7 @@ import { ACTIVE, LOADING, PLAYING, SELECTED, useRowState } from "./rowState";
 import { registerRow, useSidebarUi } from "./state";
 import { TabIcon } from "./TabIcon";
 import { TabBadges } from "../media/TabBadges";
+import { useSidebarRowMetrics } from "./rowMetrics";
 import { useSidebarTokens } from "./tokens";
 
 export const clickMods = (e: GestureResponderEvent) => {
@@ -52,6 +53,7 @@ export const TabRowItem = memo(function TabRowItem({
 export const TabRow = memo(function TabRow({ tabId, onto = false, shift = null }: { tabId: string; onto?: boolean; shift?: Animated.Value | null }) {
   const theme = useTheme();
   const tokens = useSidebarTokens();
+  const rows = useSidebarRowMetrics();
   const windowId = useWindowId();
   const { tab, flags } = useRowState(tabId, windowId);
   const active = !!(flags & ACTIVE);
@@ -101,7 +103,7 @@ export const TabRow = memo(function TabRow({ tabId, onto = false, shift = null }
                 shadowOpacity={active ? 1 : 0}
                 shadowRadius={theme.tabSelectedShadowRadius}
                 shadowOffset={[0, 0.5]}
-                style={{ height: layout.rowHeight, flexDirection: "row", alignItems: "center", paddingLeft: 9 - border, paddingRight: 6 - border }}
+                style={{ height: rows.rowHeight, flexDirection: "row", alignItems: "center", paddingLeft: 9 - border, paddingRight: 6 - border }}
               >
                 {resettable ? (
                   <View {...backToPin.hoverProps}>
@@ -134,10 +136,12 @@ export const TabRow = memo(function TabRow({ tabId, onto = false, shift = null }
                     initial={tab.customTitle ?? tab.title}
                     placeholder={tab.title || "Tab name"}
                     color={active ? theme.tabSelectedText : theme.textPrimary}
+                    fontSize={rows.titleSize}
+                    height={rows.titleHeight}
                     onDone={(text) => (text === null ? endRename({ kind: "tab", id: tabId }) : commitRename({ kind: "tab", id: tabId }, text))}
                   />
                 ) : (
-                  <FadeLabel text={title} fontSize={13} color={active ? theme.tabSelectedText : theme.textTab} style={{ flex: 1, height: 18, marginLeft: 5 }} />
+                  <FadeLabel text={title} fontSize={rows.titleSize} color={active ? theme.tabSelectedText : rows.tabTitle} style={{ flex: 1, height: rows.titleHeight, marginLeft: 5 }} />
                 )}
                 <HoverSlot
                   hovered={hovered && !renaming}
@@ -160,6 +164,7 @@ export function RenameField({
   placeholder,
   color,
   fontSize = 13,
+  height = 18,
   weight,
   onDone,
 }: {
@@ -167,6 +172,7 @@ export function RenameField({
   placeholder: string;
   color: string;
   fontSize?: number;
+  height?: number;
   weight?: "500" | "600";
   onDone(text: string | null): void;
 }) {
@@ -197,7 +203,7 @@ export function RenameField({
       onBlur={() => finish(text)}
       keyDownEvents={[{ key: "Escape" }]}
       onKeyDown={(e) => e.nativeEvent.key === "Escape" && finish(null)}
-      style={{ flex: 1, height: 18, marginLeft: 5, fontSize, fontWeight: weight, color, paddingVertical: 0, paddingHorizontal: 0 }}
+      style={{ flex: 1, height, marginLeft: 5, fontSize, fontWeight: weight, color, paddingVertical: 0, paddingHorizontal: 0 }}
     />
   );
 }
@@ -217,6 +223,7 @@ export const SplitRowItem = memo(function SplitRowItem({
   const tabIds = useBrowser((s) => s.splits[splitId]?.tabIds.filter((id) => s.tabs[id] && !s.tabs[id]!.pinned).join(",") ?? "").split(",").filter(Boolean);
   const { wrapper, handle } = useDragItem(`s:${splitId}`, { kind: "split", tabIds, section, parentGroup }, undefined, motion?.clip);
   const theme = useTheme();
+  const rows = useSidebarRowMetrics();
   const profileId = usePageProfileId();
   const active = useBrowser((s) => tabIds.includes(s.windows[windowId]?.activeTabIds[profileId] ?? ""));
   const { hovered, hoverProps } = useRowHover(windowId, null);
@@ -234,7 +241,7 @@ export const SplitRowItem = memo(function SplitRowItem({
           shadowOpacity={active ? 1 : 0}
           shadowRadius={theme.tabSelectedShadowRadius}
           shadowOffset={[0, 0.5]}
-          style={{ height: layout.rowHeight, flexDirection: "row", alignItems: "center", paddingHorizontal: active ? 2 : 3 }}
+          style={{ height: rows.rowHeight, flexDirection: "row", alignItems: "center", paddingHorizontal: active ? 2 : 3 }}
         >
           {tabIds.map((id, i) => (
             <View key={id} style={{ flex: 1, flexDirection: "row", alignItems: "center", minWidth: 0 }}>
@@ -250,6 +257,7 @@ export const SplitRowItem = memo(function SplitRowItem({
 
 function SplitPane({ tabId, windowId }: { tabId: string; windowId: string }) {
   const theme = useTheme();
+  const rows = useSidebarRowMetrics();
   const tab = useTab(tabId);
   const active = useIsActiveTab(tabId);
   const { hovered, hoverProps } = useRowHover(windowId, { kind: "tab", id: tabId });
@@ -260,7 +268,7 @@ function SplitPane({ tabId, windowId }: { tabId: string; windowId: string }) {
         <Pressable onPress={(e) => clickTab(windowId, tabId, clickMods(e))}>
           <View
             style={{
-              height: layout.rowHeight - 6,
+              height: rows.rowHeight - 6,
               borderRadius: 7,
               flexDirection: "row",
               alignItems: "center",
@@ -269,7 +277,7 @@ function SplitPane({ tabId, windowId }: { tabId: string; windowId: string }) {
             }}
           >
             <TabIcon tabId={tab.id} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} size={14} />
-            <FadeLabel text={tabTitle(tab)} fontSize={12} color={active ? theme.tabSelectedText : theme.textTab} style={{ flex: 1, height: 16, marginLeft: 5 }} />
+            <FadeLabel text={tabTitle(tab)} fontSize={rows.splitTitleSize} color={active ? theme.tabSelectedText : rows.tabTitle} style={{ flex: 1, height: rows.splitTitleHeight, marginLeft: 5 }} />
           </View>
         </Pressable>
       </ContextMenuArea>

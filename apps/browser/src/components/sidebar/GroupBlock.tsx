@@ -2,7 +2,7 @@ import { ContextMenuArea, FadeLabel, Surface, Symbol } from "@ardia/shell";
 import { memo, useContext, useState } from "react";
 import { Animated, Pressable, Text, View } from "react-native";
 import { useShallow } from "zustand/react/shallow";
-import { hex, layout, useTheme } from "../../lib/theme";
+import { hex, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { usePageProfileId, useWindowId } from "../../store/hooks";
 import { groupLabel } from "../../store/organize";
@@ -20,6 +20,7 @@ import { capture, GhostSlot, ListMotionContext, newCapture, useGroupMotion } fro
 import { openGroupMenu } from "./menus";
 import { registerRow, useSidebarUi } from "./state";
 import { TabIcon } from "./TabIcon";
+import { useSidebarRowMetrics } from "./rowMetrics";
 import { RenameField, SplitRowItem, TabRowItem } from "./TabRow";
 import { GROUP_COLORS, useSidebarTokens, withAlpha } from "./tokens";
 
@@ -28,6 +29,7 @@ const PAD = GROUP_PAD;
 export const GroupBlock = memo(function GroupBlock({ groupId, section, motion: own = null }: { groupId: string; section: "list" | "pinnedGroups"; motion?: EntryMotion | null }) {
   const windowId = useWindowId();
   const tokens = useSidebarTokens();
+  const rows = useSidebarRowMetrics();
   const collapsed = useBrowser((s) => !!s.groups[groupId]?.collapsed);
   const color = useBrowser((s) => s.groups[groupId]?.color ?? null);
   const tabIds = useBrowser((s) => s.groups[groupId]?.tabIds.join(",") ?? "");
@@ -76,8 +78,8 @@ export const GroupBlock = memo(function GroupBlock({ groupId, section, motion: o
                 },
           )}
           keep={activeEntry}
-          gap={layout.rowGap}
-          rowHeight={layout.rowHeight}
+          gap={rows.rowGap}
+          rowHeight={rows.rowHeight}
           padBottom={PAD}
           mountClosed={selectedInside}
           footer={<Animated.View ref={tail.wrapper.ref} style={tail.wrapper.style} />}
@@ -99,6 +101,7 @@ const Entry = memo(function Entry({ entry, section, groupId, motion }: { entry: 
 function GroupHeader({ groupId, windowId, collapsed, open }: { groupId: string; windowId: string; collapsed: boolean; open: Animated.Value }) {
   const theme = useTheme();
   const tokens = useSidebarTokens();
+  const rows = useSidebarRowMetrics();
   const group = useBrowser((s) => s.groups[groupId]);
   const label = useBrowser((s) => (s.groups[groupId] ? groupLabel(s, s.groups[groupId]!) : ""));
   const firstTab = useBrowser(
@@ -132,7 +135,7 @@ function GroupHeader({ groupId, windowId, collapsed, open }: { groupId: string; 
             <Surface
               fill={hex(dropInto || pressed ? theme.tabPressed : hovered ? tokens.groupHeaderHover : "rgba(0,0,0,0)")}
               cornerRadius={GROUP_HEADER_RADIUS}
-              style={{ height: layout.rowHeight, flexDirection: "row", alignItems: "center", paddingLeft: 9 + PAD, paddingRight: 6 }}
+              style={{ height: rows.rowHeight, flexDirection: "row", alignItems: "center", paddingLeft: 9 + PAD, paddingRight: 6 }}
             >
               {group.icon || firstTab ? (
                 <TabIcon url={firstTab?.url ?? ""} favicon={firstTab?.favicon} icon={group.icon ?? firstTab?.customIcon} profileId={firstTab?.profileId} />
@@ -143,17 +146,19 @@ function GroupHeader({ groupId, windowId, collapsed, open }: { groupId: string; 
                 <RenameField
                   initial={group.name}
                   placeholder={label}
-                  color={tokens.groupTitle}
+                  color={rows.groupTitle}
+                  fontSize={rows.titleSize}
+                  height={rows.titleHeight}
                   weight="500"
                   onDone={(text) => (text === null ? endRename(target) : commitRename(target, text))}
                 />
               ) : (
-                <Animated.View style={{ flex: 1, height: 18, marginLeft: 5, flexDirection: "row", alignItems: "center", transform: [{ rotate: countdown.rotate }] }}>
-                  <View style={{ flexShrink: 1, height: 18, paddingRight: 8, justifyContent: "center" }}>
-                    <Text numberOfLines={1} style={{ opacity: 0, fontSize: 13, fontWeight: "500" }}>
+                <Animated.View style={{ flex: 1, height: rows.titleHeight, marginLeft: 5, flexDirection: "row", alignItems: "center", transform: [{ rotate: countdown.rotate }] }}>
+                  <View style={{ flexShrink: 1, height: rows.titleHeight, paddingRight: 8, justifyContent: "center" }}>
+                    <Text numberOfLines={1} style={{ opacity: 0, fontSize: rows.titleSize, fontWeight: "500" }}>
                       {label}
                     </Text>
-                    <FadeLabel text={label} fontSize={13} weight="medium" color={tokens.groupTitle} style={{ position: "absolute", left: 0, right: 0, top: 0, height: 18 }} />
+                    <FadeLabel text={label} fontSize={rows.titleSize} weight="medium" color={rows.groupTitle} style={{ position: "absolute", left: 0, right: 0, top: 0, height: rows.titleHeight }} />
                   </View>
                   <Animated.View
                     style={{
@@ -165,7 +170,7 @@ function GroupHeader({ groupId, windowId, collapsed, open }: { groupId: string; 
                       transform: [{ rotate: open.interpolate({ inputRange: [0, 1], outputRange: ["-90deg", "0deg"] }) }],
                     }}
                   >
-                    <Symbol name="chevron.down" size={9} weight="semibold" color={withAlpha(tokens.groupTitle, 0.5)} style={{ width: 10, height: 10 }} />
+                    <Symbol name="chevron.down" size={9} weight="semibold" color={withAlpha(rows.groupTitle, 0.5)} style={{ width: 10, height: 10 }} />
                   </Animated.View>
                 </Animated.View>
               )}

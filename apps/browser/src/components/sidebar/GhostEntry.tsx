@@ -1,7 +1,7 @@
 import { FadeLabel, Symbol } from "@ardia/shell";
 import { Image, Text, View } from "react-native";
 import { resolveFavicon, useFavicons } from "../../lib/favicons";
-import { layout, useTheme } from "../../lib/theme";
+import { useTheme } from "../../lib/theme";
 import type { BrowserState } from "../../store/browser";
 import { groupLabel } from "../../store/organize";
 import { tabTitle } from "./actions";
@@ -9,6 +9,7 @@ import { groupEntries } from "./entries";
 import { GROUP_BORDER, GROUP_PAD, keptEntry } from "./geometry";
 import { pointerOnRow } from "./hover";
 import { FaviconFallback, NewTabIcon } from "../primitives";
+import { useSidebarRowMetrics, type SidebarRows } from "./rowMetrics";
 import { SYMBOL_PREFIX, TabIcon } from "./TabIcon";
 import { GROUP_COLORS, useSidebarTokens, withAlpha } from "./tokens";
 
@@ -72,8 +73,8 @@ export function snapshotEntry(s: BrowserState, windowId: string, profileId: stri
   };
 }
 
-export function ghostEntry(snapshot: EntrySnapshot, theme: ReturnType<typeof useTheme>, top: number) {
-  if (snapshot.kind === "tab") return tabGhost(snapshot, theme, top);
+export function ghostEntry(snapshot: EntrySnapshot, theme: ReturnType<typeof useTheme>, rows: SidebarRows, top: number) {
+  if (snapshot.kind === "tab") return tabGhost(snapshot, theme, rows, top);
   return <View style={{ marginTop: top }}>{snapshot.kind === "split" ? <SplitGhost shot={snapshot} /> : <GroupGhost shot={snapshot} />}</View>;
 }
 
@@ -84,13 +85,13 @@ function ghostIcon(shot: TabShot, theme: ReturnType<typeof useTheme>) {
   return shot.url ? <FaviconFallback url={shot.url} /> : <NewTabIcon />;
 }
 
-function tabGhost(shot: TabShot, theme: ReturnType<typeof useTheme>, top = 0) {
+function tabGhost(shot: TabShot, theme: ReturnType<typeof useTheme>, rows: SidebarRows, top = 0) {
   return (
     <View
       key={shot.key}
       style={{
         marginTop: top,
-        height: layout.rowHeight,
+        height: rows.rowHeight,
         borderRadius: 10,
         flexDirection: "row",
         alignItems: "center",
@@ -101,7 +102,7 @@ function tabGhost(shot: TabShot, theme: ReturnType<typeof useTheme>, top = 0) {
     >
       {ghostIcon(shot, theme)}
       {shot.sound ? <Symbol name={shot.sound === "muted" ? "speaker.slash" : "speaker.wave.2"} size={12} color={theme.textTab} style={{ width: 18, height: 16, marginLeft: 6 }} /> : null}
-      <FadeLabel text={shot.title} fontSize={13} color={theme.textTab} style={{ flex: 1, height: 18, marginLeft: 5 }} />
+      <FadeLabel text={shot.title} fontSize={rows.titleSize} color={rows.tabTitle} style={{ flex: 1, height: rows.titleHeight, marginLeft: 5 }} />
       {shot.hovered ? <Symbol name="xmark" size={10} weight="semibold" color={theme.icon} style={{ width: 22, height: 22 }} /> : null}
     </View>
   );
@@ -109,14 +110,15 @@ function tabGhost(shot: TabShot, theme: ReturnType<typeof useTheme>, top = 0) {
 
 function SplitGhost({ shot }: { shot: SplitShot }) {
   const theme = useTheme();
+  const rows = useSidebarRowMetrics();
   return (
-    <View style={{ height: layout.rowHeight, borderRadius: 10, flexDirection: "row", alignItems: "center", paddingHorizontal: 3 }}>
+    <View style={{ height: rows.rowHeight, borderRadius: 10, flexDirection: "row", alignItems: "center", paddingHorizontal: 3 }}>
       {shot.panes.map((pane, i) => (
         <View key={pane.key} style={{ flex: 1, flexDirection: "row", alignItems: "center", minWidth: 0 }}>
           {i > 0 && <View style={{ width: 1, height: 16, backgroundColor: theme.divider, marginRight: 2 }} />}
-          <View style={{ flex: 1, minWidth: 0, height: layout.rowHeight - 6, flexDirection: "row", alignItems: "center", paddingLeft: 6 }}>
+          <View style={{ flex: 1, minWidth: 0, height: rows.rowHeight - 6, flexDirection: "row", alignItems: "center", paddingLeft: 6 }}>
             <TabIcon url={pane.url} favicon={pane.favicon} icon={pane.icon} profileId={pane.profileId} size={14} />
-            <FadeLabel text={pane.title} fontSize={12} color={theme.textTab} style={{ flex: 1, height: 16, marginLeft: 5 }} />
+            <FadeLabel text={pane.title} fontSize={rows.splitTitleSize} color={rows.tabTitle} style={{ flex: 1, height: rows.splitTitleHeight, marginLeft: 5 }} />
           </View>
         </View>
       ))}
@@ -127,25 +129,26 @@ function SplitGhost({ shot }: { shot: SplitShot }) {
 function GroupGhost({ shot }: { shot: GroupShot }) {
   const theme = useTheme();
   const tokens = useSidebarTokens();
+  const rows = useSidebarRowMetrics();
   const spec = shot.color ? GROUP_COLORS[shot.color as keyof typeof GROUP_COLORS] : null;
   const fill = spec ? withAlpha(spec.hex, 0.16) : tokens.groupFill;
   const stroke = spec ? withAlpha(spec.hex, 0.3) : tokens.groupStroke;
   const pad = shot.members.length || !shot.collapsed ? GROUP_PAD : 0;
   return (
     <View style={{ borderRadius: 12, backgroundColor: fill, borderWidth: GROUP_BORDER, borderColor: stroke, paddingHorizontal: GROUP_PAD }}>
-      <View style={{ height: layout.rowHeight, flexDirection: "row", alignItems: "center", paddingLeft: 9, paddingRight: 6 - GROUP_PAD }}>
+      <View style={{ height: rows.rowHeight, flexDirection: "row", alignItems: "center", paddingLeft: 9, paddingRight: 6 - GROUP_PAD }}>
         {shot.icon ? <TabIcon url={shot.icon.url} favicon={shot.icon.favicon} icon={shot.icon.icon} profileId={shot.icon.profileId} /> : <View style={{ width: 16 }} />}
-        <View style={{ flexShrink: 1, height: 18, marginLeft: 5, paddingRight: 8, justifyContent: "center" }}>
-          <Text numberOfLines={1} style={{ opacity: 0, fontSize: 13, fontWeight: "500" }}>
+        <View style={{ flexShrink: 1, height: rows.titleHeight, marginLeft: 5, paddingRight: 8, justifyContent: "center" }}>
+          <Text numberOfLines={1} style={{ opacity: 0, fontSize: rows.titleSize, fontWeight: "500" }}>
             {shot.label}
           </Text>
-          <FadeLabel text={shot.label} fontSize={13} weight="medium" color={tokens.groupTitle} style={{ position: "absolute", left: 0, right: 0, top: 0, height: 18 }} />
+          <FadeLabel text={shot.label} fontSize={rows.titleSize} weight="medium" color={rows.groupTitle} style={{ position: "absolute", left: 0, right: 0, top: 0, height: rows.titleHeight }} />
         </View>
         <View style={{ width: 10, height: 10, transform: [{ rotate: shot.collapsed ? "-90deg" : "0deg" }] }}>
-          <Symbol name="chevron.down" size={9} weight="semibold" color={withAlpha(tokens.groupTitle, 0.5)} style={{ width: 10, height: 10 }} />
+          <Symbol name="chevron.down" size={9} weight="semibold" color={withAlpha(rows.groupTitle, 0.5)} style={{ width: 10, height: 10 }} />
         </View>
       </View>
-      <View style={{ gap: layout.rowGap, paddingBottom: pad }}>{shot.members.map((m) => (m.kind === "split" ? <SplitGhost key={m.key} shot={m} /> : tabGhost(m, theme)))}</View>
+      <View style={{ gap: rows.rowGap, paddingBottom: pad }}>{shot.members.map((m) => (m.kind === "split" ? <SplitGhost key={m.key} shot={m} /> : tabGhost(m, theme, rows)))}</View>
     </View>
   );
 }

@@ -33,6 +33,7 @@ export function TabsPane() {
       <Group style={{ marginTop: 14 }}>
         {toggle("hideToolbarWhileScrolling", "tabs.hideToolbarWhileScrolling")}
         {!top && toggle("showSidebarButton", "tabs.showSidebarButton")}
+        {!top && toggle("arcSidebarText", "tabs.arcSidebarText")}
       </Group>
 
       <SectionHeader title="General" />

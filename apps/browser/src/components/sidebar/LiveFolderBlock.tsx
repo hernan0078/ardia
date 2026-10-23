@@ -3,7 +3,7 @@ import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "reac
 import { Animated, Easing, Pressable, Text, View } from "react-native";
 import { useShallow } from "zustand/react/shallow";
 import { closeTab } from "../../lib/actions";
-import { hex, layout, useTheme } from "../../lib/theme";
+import { hex, useTheme } from "../../lib/theme";
 import { COMPLETION_MS, errorText, openLiveItem, refreshFolder, statusText } from "../../live/engine";
 import { prBadge } from "../../live/github";
 import { folderRows, type FolderRow } from "../../live/rows";
@@ -22,6 +22,7 @@ import { Fold, useFold, type FoldEntry } from "./Fold";
 import { GROUP_BORDER, GROUP_HEADER_RADIUS, GROUP_PAD, GROUP_RADIUS } from "./geometry";
 import { dismissHover, useRowHover } from "./hover";
 import { openLiveFolderMenu, openLiveItemMenu } from "./liveMenus";
+import { useSidebarRowMetrics } from "./rowMetrics";
 import { registerRow } from "./state";
 import { TabIcon } from "./TabIcon";
 import { useSidebarTokens } from "./tokens";
@@ -36,9 +37,10 @@ export const LiveFolders = memo(function LiveFolders({ windowId, spaced }: { win
   const page = usePageProfileId();
   const profileId = useBrowser((s) => (s.windows[windowId]?.incognito ? "" : page));
   const ids = useLive(useShallow((s) => profileFolders(s, profileId)));
+  const { rowGap } = useSidebarRowMetrics();
   if (!ids.length) return null;
   return (
-    <View style={{ marginTop: spaced ? 7 : 0, marginBottom: 7, gap: layout.rowGap }}>
+    <View style={{ marginTop: spaced ? 7 : 0, marginBottom: 7, gap: rowGap }}>
       {ids.map((id) => (
         <LiveFolderBlock key={id} folderId={id} windowId={windowId} />
       ))}
@@ -48,6 +50,7 @@ export const LiveFolders = memo(function LiveFolders({ windowId, spaced }: { win
 
 function LiveFolderBlock({ folderId, windowId }: { folderId: string; windowId: string }) {
   const tokens = useSidebarTokens();
+  const { rowGap } = useSidebarRowMetrics();
   const folder = useLive((s) => s.folders[folderId]);
   const items = useLive((s) => s.items[folderId] ?? EMPTY);
   const showAll = useLive((s) => s.showAll);
@@ -81,7 +84,7 @@ function LiveFolderBlock({ folderId, windowId }: { folderId: string; windowId: s
   return (
     <View style={{ borderRadius: GROUP_RADIUS, backgroundColor: tokens.groupFill, borderWidth: GROUP_BORDER, borderColor: tokens.groupStroke, paddingHorizontal: PAD }}>
       <FolderHeader folderId={folderId} windowId={windowId} collapsed={collapsed} />
-      <Fold fold={fold} collapsed={collapsed} entries={entries} keep={keep} gap={layout.rowGap} padBottom={PAD} />
+      <Fold fold={fold} collapsed={collapsed} entries={entries} keep={keep} gap={rowGap} padBottom={PAD} />
     </View>
   );
 }
@@ -110,6 +113,7 @@ function FolderNote({ folderId }: { folderId: string }) {
 function FolderHeader({ folderId, windowId, collapsed }: { folderId: string; windowId: string; collapsed: boolean }) {
   const theme = useTheme();
   const tokens = useSidebarTokens();
+  const rows = useSidebarRowMetrics();
   const colors = useLiveColors();
   const folder = useLive((s) => s.folders[folderId]);
   const count = useLive((s) => s.items[folderId]?.length ?? 0);
@@ -139,10 +143,10 @@ function FolderHeader({ folderId, windowId, collapsed }: { folderId: string; win
             <Surface
               fill={hex(pressed ? theme.tabPressed : hovered ? tokens.groupHeaderHover : "rgba(0,0,0,0)")}
               cornerRadius={GROUP_HEADER_RADIUS}
-              style={{ height: layout.rowHeight, flexDirection: "row", alignItems: "center", paddingLeft: 9 + PAD, paddingRight: 6 }}
+              style={{ height: rows.rowHeight, flexDirection: "row", alignItems: "center", paddingLeft: 9 + PAD, paddingRight: 6 }}
             >
               <TabIcon url={sourceSite} icon={icon} />
-              <FadeLabel text={folder.name} fontSize={13} weight="medium" color={tokens.groupTitle} style={{ flex: 1, height: 18, marginLeft: 5 }} />
+              <FadeLabel text={folder.name} fontSize={rows.titleSize} weight="medium" color={rows.groupTitle} style={{ flex: 1, height: rows.titleHeight, marginLeft: 5 }} />
               {status?.error ? (
                 <Pressable onPress={() => openSettings("liveFolders")} tooltip={errorText(status.error.kind, status.error.source)} style={{ marginRight: 2 }}>
                   <Symbol name="exclamationmark.triangle.fill" size={10} color={colors.pending} style={{ width: 18, height: 18 }} />
@@ -255,6 +259,7 @@ function MoreRow({ folderId, section, count }: { folderId: string; section: stri
 function StackRow({ folderId, windowId, stack }: { folderId: string; windowId: string; stack: Extract<FolderRow, { kind: "stack" }> }) {
   const theme = useTheme();
   const tokens = useSidebarTokens();
+  const rows = useSidebarRowMetrics();
   const collapsed = useLive((s) => s.expandedStacks[stack.id] === false);
   const fold = useFold(collapsed);
   const { hovered, hoverProps } = useHover();
@@ -282,9 +287,9 @@ function StackRow({ folderId, windowId, stack }: { folderId: string; windowId: s
         fold={fold}
         collapsed={collapsed}
         entries={stack.items.map((item) => ({ key: item.id, node: <LiveItemRow folderId={folderId} item={item} windowId={windowId} indent={10} /> }))}
-        gap={layout.rowGap}
-        rowHeight={layout.rowHeight}
-        padTop={layout.rowGap}
+        gap={rows.rowGap}
+        rowHeight={rows.rowHeight}
+        padTop={rows.rowGap}
       />
     </View>
   );
@@ -292,6 +297,7 @@ function StackRow({ folderId, windowId, stack }: { folderId: string; windowId: s
 
 function LiveItemRow({ folderId, item, windowId, indent = 0 }: { folderId: string; item: LiveItem; windowId: string; indent?: number }) {
   const theme = useTheme();
+  const rows = useSidebarRowMetrics();
   const colors = useLiveColors();
   const key = liveRowKey(folderId, item.id);
   const profileId = usePageProfileId();
@@ -312,7 +318,7 @@ function LiveItemRow({ folderId, item, windowId, indent = 0 }: { folderId: strin
   const fill = active ? theme.tabSelected : hovered ? theme.tabHover : "rgba(0,0,0,0)";
 
   return (
-    <Animated.View style={completion ? { height: fold.interpolate({ inputRange: [0, 1], outputRange: [0, layout.rowHeight] }), opacity: fold, overflow: "hidden" } : null}>
+    <Animated.View style={completion ? { height: fold.interpolate({ inputRange: [0, 1], outputRange: [0, rows.rowHeight] }), opacity: fold, overflow: "hidden" } : null}>
       <View ref={(v) => registerRow(windowId, key, v)} {...hoverProps}>
         <ContextMenuArea
           onContextMenu={() => {
@@ -336,16 +342,16 @@ function LiveItemRow({ folderId, item, windowId, indent = 0 }: { folderId: strin
                 shadowOpacity={active ? 1 : 0}
                 shadowRadius={theme.tabSelectedShadowRadius}
                 shadowOffset={[0, 0.5]}
-                style={{ height: layout.rowHeight, flexDirection: "row", alignItems: "center", paddingLeft: 9 + indent, paddingRight: 6 }}
+                style={{ height: rows.rowHeight, flexDirection: "row", alignItems: "center", paddingLeft: 9 + indent, paddingRight: 6 }}
               >
                 {unread ? <View style={{ position: "absolute", left: 2 + indent, width: 5, height: 5, borderRadius: 2.5, backgroundColor: colors.pip }} /> : null}
                 <ItemIcon item={item} completion={completion} colors={colors} />
                 <FadeLabel
                   text={item.title}
-                  fontSize={13}
+                  fontSize={rows.titleSize}
                   weight={unread ? "medium" : undefined}
-                  color={active ? theme.tabSelectedText : completion ? theme.textSecondary : theme.textTab}
-                  style={{ flex: 1, height: 18, marginLeft: 5 }}
+                  color={active ? theme.tabSelectedText : completion ? theme.textSecondary : rows.tabTitle}
+                  style={{ flex: 1, height: rows.titleHeight, marginLeft: 5 }}
                 />
                 {item.pr?.stack ? <PositionChip position={item.pr.stack.position} /> : null}
                 <HoverSlot
@@ -441,6 +447,7 @@ function useCompletedShown(folderId: string): CompletedItem[] {
 
 function CompletedFooter({ folderId, windowId }: { folderId: string; windowId: string }) {
   const theme = useTheme();
+  const { rowGap } = useSidebarRowMetrics();
   const colors = useLiveColors();
   const shown = useCompletedShown(folderId);
   const [open, setOpen] = useState(false);
@@ -455,7 +462,7 @@ function CompletedFooter({ folderId, windowId }: { folderId: string; windowId: s
     hideTimer.current = setTimeout(() => setOpen(false), 250);
   };
   return (
-    <View onMouseEnter={enter} onMouseLeave={leave} style={{ gap: layout.rowGap }}>
+    <View onMouseEnter={enter} onMouseLeave={leave} style={{ gap: rowGap }}>
       <View style={{ height: 24, flexDirection: "row", alignItems: "center", paddingLeft: 9, borderRadius: 8, backgroundColor: open ? theme.rowHover : undefined }}>
         <Symbol name="checkmark.circle" size={11} color={theme.textSecondary} style={{ width: 16, height: 16 }} />
         <Text style={{ marginLeft: 5, fontSize: 12, color: theme.textSecondary }}>{shown.length} Completed</Text>

@@ -34,15 +34,14 @@ import { pinGridHeight } from "./sidebar/pinZone";
 import { ResizeHandle } from "./sidebar/ResizeHandle";
 import { SCROLL_EDGE, ScrollEdgeLine, useScrollEdge } from "./sidebar/ScrollEdge";
 import { entriesHeight, firstPaintEntries, rowSpan, startsOffScreen, type Section } from "./sidebar/geometry";
+import { rowMetrics, useSidebarRowMetrics } from "./sidebar/rowMetrics";
 import { measureRow } from "./sidebar/state";
 import { SplitRowItem, TabRowItem } from "./sidebar/TabRow";
 import { useSidebarTokens } from "./sidebar/tokens";
 import { toggleNewTabBar } from "./omnibox/newTabBar";
 
 const GLOW_ROOM = 24;
-const ROW_PITCH = layout.rowHeight + layout.rowGap;
 const DOCKED_BOTTOM = 6;
-const DOCK = DOCKED_BOTTOM + ROW_PITCH;
 const ROWS_PER_FRAME = 32;
 const DOCK_SHARE = 0.4;
 const NONE: string[] = [];
@@ -54,7 +53,9 @@ export function Sidebar({ width }: { width: number }) {
   const [available, setAvailable] = useState(0);
   const listHeight = useRef(0);
   const [, setDockChanges] = useState(0);
-  const dockedAt = (list: number) => available > 0 && list + ROW_PITCH + 12 > available;
+  const pitch = useBrowser((s) => rowMetrics(s).pitch);
+  const dock = DOCKED_BOTTOM + pitch;
+  const dockedAt = (list: number) => available > 0 && list + pitch + 12 > available;
   const docked = dockedAt(listHeight.current);
   const onListHeight = (height: number) => {
     const before = dockedAt(listHeight.current);
@@ -93,10 +94,10 @@ export function Sidebar({ width }: { width: number }) {
               left: 0,
               right: 0,
               top: header - glowRoom,
-              bottom: (docked ? DOCK : 0) + playerHeight + footer,
+              bottom: (docked ? dock : 0) + playerHeight + footer,
               overflow: paging ? "hidden" : "visible",
             }}
-            onLayout={(e) => setAvailable(e.nativeEvent.layout.height + (docked ? DOCK : 0))}
+            onLayout={(e) => setAvailable(e.nativeEvent.layout.height + (docked ? dock : 0))}
           >
             {pages.map((page) => (
               <SidebarPage
@@ -109,7 +110,7 @@ export function Sidebar({ width }: { width: number }) {
                 docked={docked}
                 glowRoom={glowRoom}
                 height={available}
-                rows={page.id === current ? undefined : Math.ceil(available / ROW_PITCH) + 1}
+                rows={page.id === current ? undefined : Math.ceil(available / pitch) + 1}
                 geometry={page.id === current ? geometry : undefined}
                 onListHeight={onListHeight}
                 onScrollView={(v) => {
@@ -126,7 +127,7 @@ export function Sidebar({ width }: { width: number }) {
           </View>
 
           {playerTab ? (
-            <View style={{ position: "absolute", left: layout.sidebarInset, right: layout.sidebarInset, bottom: (docked ? DOCK : 8) + footer }}>
+            <View style={{ position: "absolute", left: layout.sidebarInset, right: layout.sidebarInset, bottom: (docked ? dock : 8) + footer }}>
               <SidebarPlayer tabId={playerTab} />
             </View>
           ) : null}
@@ -356,6 +357,7 @@ function PageRows({ windowId, profileId, current, rows, lazy, offScreen, tiles, 
   const newTabsAtTop = useSettings((s) => s.newTabPosition === "top");
   const animated = current && !offScreen;
   const motion = useListMotion(windowId, profileId, all, captured, animated);
+  const metrics = useSidebarRowMetrics();
   const scope = useMemo(() => ({ enabled: animated, slideBelow: motion.slideBelow }), [animated, motion.slideBelow]);
   if (geometry) geometry.current.newTabAtTop = newTabsAtTop && inlineNewTab;
   const measured = useRef(0);
@@ -367,7 +369,7 @@ function PageRows({ windowId, profileId, current, rows, lazy, offScreen, tiles, 
     <ListMotionContext.Provider value={scope}>
       <View
         onLayout={(e) => {
-          measured.current = e.nativeEvent.layout.height + SCROLL_EDGE.inset - (inlineNewTab ? ROW_PITCH : 0);
+          measured.current = e.nativeEvent.layout.height + SCROLL_EDGE.inset - (inlineNewTab ? metrics.pitch : 0);
           if (current) onListHeight(measured.current);
         }}
       >
@@ -377,7 +379,7 @@ function PageRows({ windowId, profileId, current, rows, lazy, offScreen, tiles, 
             controller?.regions.set("pinnedGroups", v);
           }}
           onLayout={geometry ? (e) => void (geometry.current.regions.pinnedGroups = e.nativeEvent.layout.y) : undefined}
-          style={{ marginTop: tiles.length ? 6 : 0, gap: layout.rowGap }}
+          style={{ marginTop: tiles.length ? 6 : 0, gap: metrics.rowGap }}
         >
           {(offScreen ? NONE : pinnedRows).map((id) => (
             <TabRowItem key={id} tabId={id} section="pinnedRows" />
@@ -395,7 +397,7 @@ function PageRows({ windowId, profileId, current, rows, lazy, offScreen, tiles, 
             controller?.regions.set("list", v);
           }}
           onLayout={geometry ? (e) => void (geometry.current.regions.list = e.nativeEvent.layout.y) : undefined}
-          style={{ marginTop: pinnedSection && !divided ? 7 : 0, gap: layout.rowGap }}
+          style={{ marginTop: pinnedSection && !divided ? 7 : 0, gap: metrics.rowGap }}
         >
           {newTabsAtTop && inlineNewTab ? <NewTabRow windowId={windowId} /> : null}
           {motion.fading
@@ -514,18 +516,17 @@ function DownloadsButton({ windowId }: { windowId: string }) {
   );
 }
 
-const CLIPPED = { marginTop: -layout.rowGap, paddingTop: layout.rowGap, overflow: "hidden" } as const;
-
 const NewTabRow = memo(function NewTabRow({ windowId, shift = null, clip = null }: { windowId: string; shift?: Animated.Value | null; clip?: ClipSource | null }) {
   const theme = useTheme();
   const tokens = useSidebarTokens();
+  const rows = useSidebarRowMetrics();
   const cleaned = useBrowser((s) => cleanedTabsFor(s, windowId).length);
   const { hovered, hoverProps } = useHover();
   const [moved, movedRef] = useShift(shift);
   const [movedButtons, movedButtonsRef] = useShift(shift);
   const clipped = useClipped(clip);
   return (
-    <View {...hoverProps} style={[{ flexDirection: "row", alignItems: "center" }, clipped ? CLIPPED : null]}>
+    <View {...hoverProps} style={[{ flexDirection: "row", alignItems: "center" }, clipped ? { marginTop: -rows.rowGap, paddingTop: rows.rowGap, overflow: "hidden" } : null]}>
       <Pressable
         style={{ flex: 1 }}
         onPress={(e) => {
@@ -539,7 +540,7 @@ const NewTabRow = memo(function NewTabRow({ windowId, shift = null, clip = null 
             ref={movedRef}
             style={[
               {
-                height: layout.rowHeight,
+                height: rows.rowHeight,
                 borderRadius: 10,
                 flexDirection: "row",
                 alignItems: "center",
@@ -551,7 +552,7 @@ const NewTabRow = memo(function NewTabRow({ windowId, shift = null, clip = null 
             ]}
           >
             <Symbol name="plus" size={13} weight="medium" color={tokens.newTabIcon} style={{ width: 16, height: 16 }} />
-            <FadeLabel text="New Tab" fontSize={13} color={tokens.newTabLabel} style={{ flex: 1, height: 18, marginLeft: 5 }} />
+            <FadeLabel text="New Tab" fontSize={rows.titleSize} color={rows.newTabLabel} style={{ flex: 1, height: rows.titleHeight, marginLeft: 5 }} />
           </View>
         )}
       </Pressable>

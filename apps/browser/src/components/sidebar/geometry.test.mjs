@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 const { useBrowser } = await import("../../store/browser.ts");
 const { sidebarEntries } = await import("./entries.ts");
-const { entriesHeight, entriesWithin, entryHeight, firstPaintEntries, startsOffScreen, FIRST_PAINT_HEIGHT } = await import("./geometry.ts");
+const { entriesHeight, entriesWithin, entryHeight, firstPaintEntries, rowSpan, startsOffScreen, FIRST_PAINT_HEIGHT } = await import("./geometry.ts");
 await import("../../test-native-stub.mjs");
 
 const S = () => useBrowser.getState();
@@ -67,4 +67,24 @@ test("lazySidebarRows off: 64 entries at first, and no page waits", () => {
   assert.equal(firstPaintEntries(S(), "w", "default", list, false), 64);
   assert.equal(startsOffScreen(false, false), false);
   assert.equal(startsOffScreen(false, true), false);
+});
+
+test("Arc-style sidebar text: heights, first paint and reveal spans follow Arc's 36 pt rows and 5 pt gaps", () => {
+  const list = hydrate();
+  const ardia = S();
+  assert.equal(entryHeight(ardia, "w", "default", "t:t0"), 34);
+  S().updateSettings({ arcSidebarText: true });
+  const s = S();
+  assert.equal(entryHeight(s, "w", "default", "t:t0"), 36);
+  const group = 0.5 * 2 + 36 + 5 * 36 + 4 * 5 + 2;
+  assert.equal(entryHeight(s, "w", "default", "g:g"), group);
+  assert.equal(entriesHeight(s, "w", "default", list.slice(0, 4)), 36 * 3 + group + 3 * 5);
+  assert.equal(entriesWithin(s, "w", "default", list, 41), 1);
+  assert.equal(entriesWithin(s, "w", "default", list, 42), 2);
+  assert.deepEqual(rowSpan(s, "w", "default", "t1", false), { section: "list", top: 41, height: 36 });
+  assert.deepEqual(rowSpan(s, "w", "default", "t1", true), { section: "list", top: 82, height: 36 });
+  assert.deepEqual(rowSpan(s, "w", "default", "t4", false), { section: "list", top: 82 + 0.5 + 36 + 2 * 41, height: 36 });
+  assert.deepEqual(rowSpan(s, "w", "default", "t7", false), { section: "list", top: 82 + group + 5, height: 36 });
+  S().updateSettings({ arcSidebarText: false });
+  assert.deepEqual(rowSpan(S(), "w", "default", "t1", false), { section: "list", top: 37, height: 34 });
 });

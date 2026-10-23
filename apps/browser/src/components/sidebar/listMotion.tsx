@@ -1,18 +1,17 @@
 import { createContext, memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, View } from "react-native";
-import { layout, useTheme } from "../../lib/theme";
+import { useTheme } from "../../lib/theme";
 import { useBrowser, type BrowserState } from "../../store/browser";
 import { useAnimatedStyle, type ClipSource, type EntryMotion } from "./entryMotion";
 import { groupEntries } from "./entries";
 import { entryHeight } from "./geometry";
 import { ghostEntry, snapshotEntry, type EntrySnapshot } from "./GhostEntry";
+import { rowMetrics, useSidebarRowMetrics } from "./rowMetrics";
 
 export const SLIDE_MS = 140;
 export const FADE_MS = 100;
 export const SLIDE_EASING = Easing.bezier(0.25, 0.1, 0.25, 1);
 export const FADE_EASING = Easing.bezier(0, 0, 0.58, 1);
-const ROW = layout.rowHeight;
-const GAP = layout.rowGap;
 const TAIL = "~tail";
 const FRAME_SLACK_MS = 50;
 const devScale = () => (__DEV__ ? ((globalThis as { sidebarMotionScale?: number }).sidebarMotionScale ?? 1) : 1);
@@ -60,10 +59,11 @@ const openedIn = (before: BrowserState, after: BrowserState) => (entry: string) 
 
 function offsets(s: BrowserState, entries: string[], height: Height, start = 0, base = 0): Offsets {
   const at = new Map<string, number>();
+  const gap = rowMetrics(s).rowGap;
   let y = base;
   for (let i = start; i < entries.length; i++) {
     at.set(entries[i]!, y);
-    y += height(s, entries[i]!) + GAP;
+    y += height(s, entries[i]!) + gap;
   }
   return { at, end: y };
 }
@@ -75,8 +75,9 @@ function sharedPrefix(a: string[], b: string[]): number {
 }
 
 function prefixHeight(s: BrowserState, entries: string[], count: number, height: Height): number {
+  const gap = rowMetrics(s).rowGap;
   let y = 0;
-  for (let i = 0; i < count; i++) y += height(s, entries[i]!) + GAP;
+  for (let i = 0; i < count; i++) y += height(s, entries[i]!) + gap;
   return y;
 }
 
@@ -303,6 +304,7 @@ function useMotion({ devKey, entries, from, planner, height, enabled, native, be
     const byAnchor = new Map<string | null, Ghost[]>();
     for (const g of ghosts.current) byAnchor.set(g.anchor, [...(byAnchor.get(g.anchor) ?? []), g]);
     const out: ListSlot[] = [];
+    const gap = rowMetrics(useBrowser.getState()).rowGap;
     let y = 0;
     let shown = 0;
     for (const entry of entries) {
@@ -314,7 +316,7 @@ function useMotion({ devKey, entries, from, planner, height, enabled, native, be
         shown++;
       }
       if (here) byAnchor.delete(entry);
-      y += height(entry) + GAP;
+      y += height(entry) + gap;
     }
     for (const left of byAnchor.values()) for (const ghost of left) if (!ghost.anchor || !entries.includes(ghost.anchor)) out.push(place(ghost, ghost.y - y));
     return out;
@@ -355,7 +357,7 @@ export function useListMotion(windowId: string, profileId: string, entries: stri
   return useMotion({ devKey: windowId, entries, from, planner, height: (e) => height(useBrowser.getState(), e), enabled, native: true });
 }
 
-const rowHeight: Height = () => ROW;
+const rowHeight: Height = (s) => rowMetrics(s).rowHeight;
 
 export function useGroupMotion(windowId: string, profileId: string, groupId: string, entries: string[], from: Capture, scope: ListMotionScope, enabled: boolean) {
   const planner: Planner = (before, after, slides, ghosts, t) => {
@@ -377,16 +379,17 @@ export function useGroupMotion(windowId: string, profileId: string, groupId: str
     return { ...(plan ?? { moves: [], ghosts: [], clipped: [] }), below: old.end - next.end };
   };
   const below = scope.slideBelow ? (delta: number) => scope.slideBelow?.(`g:${groupId}`, delta) : null;
-  return useMotion({ devKey: `${windowId}:${groupId}`, entries, from, planner, height: () => ROW, enabled, native: false, below });
+  return useMotion({ devKey: `${windowId}:${groupId}`, entries, from, planner, height: () => rowMetrics(useBrowser.getState()).rowHeight, enabled, native: false, below });
 }
 
 export const GhostSlot = memo(function GhostSlot({ snapshot, top, opacity }: { snapshot: EntrySnapshot; top: number; opacity: Animated.Value }) {
   const style = useMemo(() => ({ opacity }), [opacity]);
   const [fade, ref] = useAnimatedStyle(style);
   const theme = useTheme();
+  const rows = useSidebarRowMetrics();
   return (
-    <View pointerEvents="none" {...fade} ref={ref} style={[{ height: 0, marginBottom: -GAP }, fade.style as object]}>
-      {ghostEntry(snapshot, theme, top)}
+    <View pointerEvents="none" {...fade} ref={ref} style={[{ height: 0, marginBottom: -rows.rowGap }, fade.style as object]}>
+      {ghostEntry(snapshot, theme, rows, top)}
     </View>
   );
 });

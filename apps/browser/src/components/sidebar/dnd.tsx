@@ -11,6 +11,7 @@ import { beginTabDrag, cancelTabDrag, endTabDrag, setDragPicture, updateTabDrag,
 import { useClipped, type ClipSource } from "./entryMotion";
 import { suppressHover } from "./hover";
 import { overPins, pinGridHeight, pinSlot, TILE_GAP } from "./pinZone";
+import { rowMetrics } from "./rowMetrics";
 import { SCROLL_EDGE } from "./ScrollEdge";
 
 type Frame = { x: number; y: number; w: number; h: number };
@@ -43,7 +44,6 @@ type Drop =
 
 export type Ghost = { item: Item; count: number; width: number; height: number; position: Animated.ValueXY; landing?: boolean };
 
-const ROW_GAP = layout.rowGap;
 export const PIN_SLOT = layout.pinnedHeight + TILE_GAP;
 const EDGE = 28;
 const spring = (value: Animated.Value, toValue: number) => Animated.spring(value, { toValue, ...SLIDE });
@@ -94,6 +94,10 @@ class DragController {
   private escapable = false;
   landed: { key: string; x: number; y: number } | null = null;
 
+  private get rows() {
+    return rowMetrics(useBrowser.getState());
+  }
+
   create(key: string): Item {
     return { key, kind: "row", tabIds: [], section: "list", view: null, header: null, gap: new Animated.Value(0), size: new Animated.Value(0), frame: null, headerFrame: null };
   }
@@ -124,10 +128,11 @@ class DragController {
     this.startScrollY = this.scrollY;
     await this.measureAll();
     if (this.token !== token || !this.sources.length) return;
-    const frame = item.frame ?? { x, y, w: 176, h: 33 };
+    const fallbackHeight = this.rows.rowHeight - 1;
+    const frame = item.frame ?? { x, y, w: 176, h: fallbackHeight };
     this.grab = { x: x - frame.x, y: y - frame.y };
     const count = new Set(this.sources.flatMap((s) => s.tabIds)).size;
-    const height = item.kind === "group" ? Math.min(frame.h, item.headerFrame?.h ?? 33) : frame.h;
+    const height = item.kind === "group" ? Math.min(frame.h, item.headerFrame?.h ?? fallbackHeight) : frame.h;
     if (seq) setDragPicture(seq, () => [this.pointer.x - this.grab.x, this.pointer.y - this.grab.y, frame.w, height], [x, y]);
     this.ghost = {
       item,
@@ -279,6 +284,7 @@ class DragController {
     const ref = target ?? source;
     const top = ref.frame?.y;
     if (top === undefined) return null;
+    const { rowGap } = this.rows;
     const now = (v: Animated.Value) => {
       let value = 0;
       v.stopAnimation((x) => (value = x));
@@ -289,13 +295,13 @@ class DragController {
     const group = source.parentGroup ? this.items.get(`g:${source.parentGroup}`) : undefined;
     const emptied = !!group && group.tabIds.every((id) => source.tabIds.includes(id)) && !!group.frame && group.frame.y < top && group !== ref;
     if (!emptied && source !== ref && source.frame && source.frame.y < top)
-      closing += source.parentGroup ? Math.max(0, now(source.size) - ROW_GAP) + ROW_GAP : now(source.size);
+      closing += source.parentGroup ? Math.max(0, now(source.size) - rowGap) + rowGap : now(source.size);
     const container = ref.kind === "tail" ? [...this.items.values()].find((i) => i !== source && i.kind !== "tail" && i.frame && i.section === ref.section && i.parentGroup === ref.parentGroup) : ref;
     const home = target ? null : this.at(source.frame, this.still(source));
     if (home) return Promise.resolve({ x: home.x, y: home.y });
     return Promise.all([measure(ref.view), emptied ? measure(group!.view) : null]).then(([f, gone]) => {
       if (!f) return null;
-      return { x: container?.frame?.x ?? f.x, y: f.y - closing - (gone ? gone.h + ROW_GAP : 0) + (ref.kind === "tail" ? ROW_GAP : 0) };
+      return { x: container?.frame?.x ?? f.x, y: f.y - closing - (gone ? gone.h + rowGap : 0) + (ref.kind === "tail" ? rowGap : 0) };
     });
   }
 
@@ -352,7 +358,8 @@ class DragController {
     const firstTab = (i: Item | undefined) => i?.tabIds.find((id) => !dragged.has(id)) ?? null;
     const tabsDrag = source.kind === "row" || source.kind === "tile";
     const count = this.external || dragged.size;
-    const rowPitch = (source.kind === "group" ? (source.frame?.h ?? layout.rowHeight) : layout.rowHeight * Math.max(1, this.ghost?.count ?? this.external ?? 1)) + ROW_GAP;
+    const { rowHeight, rowGap } = this.rows;
+    const rowPitch = (source.kind === "group" ? (source.frame?.h ?? rowHeight) : rowHeight * Math.max(1, this.ghost?.count ?? this.external ?? 1)) + rowGap;
     let drop: Drop = { type: "none" };
     let gapKey: string | null = null;
     let pitch = rowPitch;
@@ -455,13 +462,14 @@ class DragController {
     let dy = 0;
     let dh = 0;
     const gap = this.gapKey ? this.items.get(this.gapKey) : undefined;
+    const { rowGap } = this.rows;
     if (gap?.frame && gap.section !== "tiles") {
       if (gap.frame.y <= top) dy += this.pitch;
       else if (gap.frame.y < bottom) dh += this.pitch;
     }
     for (const s of this.sources) {
       if (s.kind === "tile" || !s.frame || s === i) continue;
-      const closed = s.frame.h + (s.parentGroup ? 0 : ROW_GAP);
+      const closed = s.frame.h + (s.parentGroup ? 0 : rowGap);
       if (s.frame.y < top) dy -= closed;
       else if (s.frame.y < bottom) dh -= closed;
     }
@@ -579,8 +587,9 @@ export function useDragItem(key: string, spec: ItemSpec, selection: () => string
   const source = useStore(marks, (m) => m.sources.has(key));
   const landing = useStore(marks, (m) => m.landing === key);
   const clipped = useClipped(clip);
+  const rowGap = useBrowser((s) => rowMetrics(s).rowGap);
   const horizontal = spec.kind === "tile";
-  const tailOffset = useMemo(() => item && Animated.add(item.gap, -ROW_GAP), [item]);
+  const tailOffset = useMemo(() => item && Animated.add(item.gap, -rowGap), [item, rowGap]);
   const style = item
     ? {
         ...(horizontal ? null : { marginTop: spec.kind === "tail" ? tailOffset! : item.gap }),
@@ -592,11 +601,11 @@ export function useDragItem(key: string, spec: ItemSpec, selection: () => string
                 opacity: 0,
                 overflow: "hidden" as const,
               }
-            : { height: item.size, marginBottom: -ROW_GAP, opacity: 0, overflow: "hidden" as const }
+            : { height: item.size, marginBottom: -rowGap, opacity: 0, overflow: "hidden" as const }
           : landing
             ? { opacity: 0 }
             : {}),
-        ...(clipped && !source && !landing ? { marginTop: -ROW_GAP, paddingTop: ROW_GAP, overflow: "hidden" as const } : {}),
+        ...(clipped && !source && !landing ? { marginTop: -rowGap, paddingTop: rowGap, overflow: "hidden" as const } : {}),
       }
     : {};
   return { wrapper: { ref, style }, handle: responder.panHandlers, headerRef, dragging: source, gap: item?.gap };

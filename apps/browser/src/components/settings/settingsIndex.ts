@@ -97,6 +97,11 @@ const ROWS: Record<SettingsPane, Section[]> = {
           keywords: ["auto hide", "compact"],
         },
         showSidebarButton: { title: "Show sidebar button", description: "⌘S and View › Auto-Hide Tabs still hide and show the sidebar.", keywords: ["toggle sidebar"] },
+        arcSidebarText: {
+          title: "Arc-style sidebar text",
+          description: "Spaces the sidebar's rows like Arc and makes their titles a size larger and brighter.",
+          keywords: ["arc", "font size", "text size", "bigger text", "row height", "spacing", "contrast", "readability"],
+        },
       },
     },
     {
