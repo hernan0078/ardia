@@ -15,6 +15,8 @@ test("synonyms find the setting they stand for", () => {
   assert.equal(first("pip"), "tabs.autoPictureInPicture");
   assert.equal(first("vertical tabs"), "tabs.layout");
   assert.equal(first("1password"), "passwords.managerApps");
+  assert.equal(first("copy link"), "advanced.copyLinkButton");
+  assert.equal(first("copy url button"), "advanced.copyLinkButton");
 });
 
 test("a pane's name finds that pane's rows first", () => {

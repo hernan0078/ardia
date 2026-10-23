@@ -294,6 +294,7 @@ const ROWS: Record<SettingsPane, Section[]> = {
       section: "Browsing",
       rows: {
         showFullUrl: { title: "Show full URL in the address bar", description: "Instead of the site alone.", keywords: ["address", "url", "https"] },
+        copyLinkButton: { title: "Show Copy Link button in the address bar", description: "When you point at the address. ⇧⌘C copies the link too.", keywords: ["copy url", "share", "clipboard"] },
         warnMovingTabs: { title: "Warn before moving tabs between profiles", description: "Some site data doesn't come along.", keywords: ["confirm"] },
         bookmarksImport: { title: "Show the Import bookmarks button", description: "On an empty bookmarks bar.", keywords: ["bookmarks bar"] },
       },

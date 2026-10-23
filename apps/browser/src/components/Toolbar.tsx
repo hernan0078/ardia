@@ -23,6 +23,7 @@ import { showUrlBarMenu } from "./omnibox/paste";
 import { useHover } from "./primitives";
 import { ToolbarExtensions, useToolbarExtensionsWidth } from "./extensions/ToolbarExtensions";
 import { GlassFill, liquidGlass } from "./glass";
+import { useCopyLink } from "./site/copyLink";
 import { TranslateButton } from "./site/TranslateControls";
 import { ZoomIndicator } from "./site/ZoomControls";
 
@@ -269,6 +270,8 @@ export const UrlField = memo(function UrlField({
 }) {
   const theme = useTheme();
   const showFullUrl = useSettings((s) => s.showFullUrl);
+  const copyLinkButton = useSettings((s) => s.showCopyLinkButton);
+  const copyLink = useCopyLink(tab.id);
   const bookmarked = useIsBookmarked(tab.url);
   const insecure = usePage(tab.id, insecureLevel);
   const popups = usePage(tab.id, (p) => p.popups.length);
@@ -386,6 +389,9 @@ export const UrlField = memo(function UrlField({
                 onPress={() => openSplitPane(windowId, { anchorTabId: tab.id })}
                 tooltip="Open Split View (⌃⇧=)"
               />
+            )}
+            {copyLinkButton && (
+              <ToolbarButton palette={palette} icon={copyLink.copied ? "checkmark" : "link"} size={13} box={24} radius={6} onPress={copyLink.copy} tooltip="Copy Link (⇧⌘C)" />
             )}
             <ToolbarButton palette={palette} icon="slider.horizontal.3" size={13} box={24} radius={6} onPress={toggleSiteControls} active={popover === "siteControls"} tooltip="Site Controls" />
           </>

@@ -51,6 +51,7 @@ export type Settings = {
   extensionSidePanelWidth: number;
 
   showFullUrl: boolean;
+  showCopyLinkButton: boolean;
   allowJavaScriptFromAppleEvents: boolean;
   cliControl: boolean;
   bookmarksBar: "always" | "newTab" | "never";
@@ -104,6 +105,7 @@ export const DEFAULT_SETTINGS: Settings = {
   batterySaverWhen: "lowBattery",
   extensionSidePanelWidth: 360,
   showFullUrl: false,
+  showCopyLinkButton: true,
   allowJavaScriptFromAppleEvents: false,
   cliControl: false,
   bookmarksBar: "never",

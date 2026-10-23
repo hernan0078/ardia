@@ -15,7 +15,7 @@ import { usePage } from "../layout/pageState";
 import { setUrlAnchor } from "../layout/windowLayout";
 import { showUrlBarMenu } from "../omnibox/paste";
 import { Favicon, IconButton, useHover } from "../primitives";
-import { copyPageUrl } from "../site/selection";
+import { useCopyLink } from "../site/copyLink";
 import { openInMainWindow } from "./actions";
 
 const SMALL_BAR_HEIGHT = 38;
@@ -48,20 +48,10 @@ function LittleArdiaBar() {
   const windowId = useWindowId();
   const tab = useActiveTab();
   const panelOpen = useWindowUi().panel.open;
-  const [copied, setCopied] = useState(false);
-  const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const { copied, copy } = useCopyLink(tab?.url ? tab.id : undefined);
   useEffect(() => {
     void setTrafficLightsCenter(windowId, LIGHTS_CENTER);
   }, [windowId]);
-  useEffect(() => () => clearTimeout(copiedTimer.current), []);
-
-  const copy = () => {
-    if (!tab?.url) return;
-    void copyPageUrl(tab.id);
-    setCopied(true);
-    clearTimeout(copiedTimer.current);
-    copiedTimer.current = setTimeout(() => setCopied(false), 1400);
-  };
 
   return (
     <View style={{ height: SMALL_BAR_HEIGHT }}>

@@ -41,6 +41,7 @@ export const SYNCED_SETTINGS = [
   "videoUpscaling",
   "sidebarMediaControls",
   "showFullUrl",
+  "showCopyLinkButton",
   "bookmarksBar",
   "appearance",
   "addressBar",

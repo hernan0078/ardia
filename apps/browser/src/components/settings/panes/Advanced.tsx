@@ -34,6 +34,9 @@ export function AdvancedPane() {
         <Row anchor="advanced.showFullUrl">
           <Toggle value={settings.showFullUrl} onChange={(v) => update({ showFullUrl: v })} />
         </Row>
+        <Row anchor="advanced.copyLinkButton">
+          <Toggle value={settings.showCopyLinkButton} onChange={(v) => update({ showCopyLinkButton: v })} />
+        </Row>
         <Row anchor="advanced.warnMovingTabs">
           <Toggle value={settings.warnBeforeMovingTabsToProfile} onChange={(v) => update({ warnBeforeMovingTabsToProfile: v })} />
         </Row>
