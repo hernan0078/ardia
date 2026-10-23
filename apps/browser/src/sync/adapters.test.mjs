@@ -1072,3 +1072,34 @@ test("bookmarks: a Mac on old ids and one on Chrome's UUIDs keep one tree", asyn
   assertTreeWhole(now);
   assertTreeWhole(old);
 });
+
+test("each Mac publishes its own profile order, a reorder replaces it, and stopping removes it", async () => {
+  const folder = new Folder();
+  const links = { default: { syncId: "s-personal" }, work: { syncId: "s-work" }, school: { syncId: "s-school" } };
+  const profile = (id, name) => ({ id, name, color: "blue", icon: null, createdAt: 1 });
+  const macs = ["A", "B"].map((id) => new Device(id, folder));
+  for (const mac of macs) {
+    mac.with(() => useBrowser.setState((s) => ({ profiles: { ...s.profiles, work: profile("work", "Work"), school: profile("school", "School") } })));
+  }
+  macs[0].with(() => useBrowser.setState({ profileOrder: ["work", "default", "school"] }));
+  macs[1].with(() => useBrowser.setState({ profileOrder: ["school", "work", "default"] }));
+  const scopes = new Map(macs.map((m) => [m.id, emptyScope()]));
+  const run = (mac, retired = false) =>
+    mac.with(() =>
+      syncScope({ scope: "app", state: scopes.get(mac.id), transport: folder.transport(), adapters: [adapters.profileOrderAdapter(mac.id, () => links, retired)], clock: mac.clock, device: mac.id }),
+    );
+  const order = (mac, of) => scopes.get(mac.id).records[`porder:${of}`]?.v ?? null;
+  for (let i = 0; i < 2; i++) for (const mac of macs) await run(mac);
+  assert.deepEqual(order(macs[1], "A"), { o: ["s-work", "s-personal", "s-school"] }, "B reads A's order");
+  assert.deepEqual(order(macs[0], "B"), { o: ["s-school", "s-work", "s-personal"] }, "A reads B's order");
+  const quiet = await run(macs[0]);
+  assert.equal(quiet.published, 0, "an unchanged order isn't sent again, whatever the other Mac's order is");
+  macs[0].with(() => useBrowser.setState({ profileOrder: ["default", "school", "work"] }));
+  await run(macs[0]);
+  await run(macs[1]);
+  assert.deepEqual(order(macs[1], "A"), { o: ["s-personal", "s-school", "s-work"] }, "a reorder reaches the other Mac");
+  assert.deepEqual(macs[1].with(() => S().profileOrder), ["school", "work", "default"], "applying it changes nothing on the other Mac");
+  await run(macs[0], true);
+  await run(macs[1]);
+  assert.equal(order(macs[1], "A"), null, "a Mac that stops syncing takes its order with it");
+});

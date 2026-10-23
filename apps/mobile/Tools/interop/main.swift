@@ -31,6 +31,7 @@ case "seed":
     ["k": "prof:personalsync", "h": h(), "v": ["n": "Personal", "c": "plum", "i": NSNull(), "d": true]],
     ["k": "prof:worksync", "h": h(), "v": ["n": "Work", "c": "blue", "i": "symbol:briefcase.fill"]],
     ["k": "dev:\(mac)", "h": h(), "v": ["n": "Hernan’s MacBook Pro"]],
+    ["k": "porder:\(mac)", "h": h(), "v": ["o": ["worksync", "personalsync"]]],
   ]]))
   try! vault.write(scope: "p:worksync", payload: json(["v": 1, "kind": "snapshot", "device": mac, "at": now, "vv": [mac: 1], "seen": [mac: now], "records": [
     "pin:t:tab-1": ["h": h(), "o": [mac, 1], "v": ["g": NSNull(), "u": "https://github.com", "t": NSNull(), "i": NSNull(), "ti": "GitHub", "pos": "V"]],
@@ -52,6 +53,7 @@ case "phone-pin":
   let sync = CompanionSync()
   do {
     let first = try sync.connect(phrase: phrase, deviceName: "Hernan’s iPhone")
+    guard first.spaces.map(\.name) == ["Work", "Personal"] else { fail("spaces aren't in the Mac's order: \(first.spaces.map(\.name))") }
     print("spaces:", first.spaces.map { "\($0.name)[\($0.pinCount) pins, tabs from \($0.deviceTabs.map { $0.name })]" })
     let work = first.spaces.first { $0.name == "Work" }!
     SharedStore.shared.enqueue(.pin(PinRequest(id: "tab-mphonepin000001", url: "https://x.com/ardia/status/1", title: "A post on X", spaceId: work.id, asRow: true, createdAt: Date())))

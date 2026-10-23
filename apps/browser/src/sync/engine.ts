@@ -38,6 +38,7 @@ import {
   type DeviceTabs,
   type ProfileRecord,
   legacyThemeOf,
+  profileOrderAdapter,
   profileThemesAdapter,
   themeFromRecord,
   type ShareRecord,
@@ -263,14 +264,15 @@ const inTodaysNames = (adapter: Adapter): Adapter => ({
 
 function appAdapters(retiring: boolean): Adapter[] {
   const id = doc.deviceId!;
-  if (retiring) return [deviceAdapter(id, deviceName, true)];
   const enabledLinks = () => Object.fromEntries(Object.entries(doc.profiles).filter(([, l]) => l.enabled));
+  if (retiring) return [deviceAdapter(id, deviceName, true), profileOrderAdapter(id, enabledLinks, true)];
   return [
     ...(doc.types.settings ? [inTodaysNames(settingsAdapter)] : []),
     sharedDataAdapter(() => doc.profiles),
     profilesAdapter(enabledLinks),
     profileThemesAdapter(enabledLinks, () => doc.scopes[APP_SCOPE]?.records, themeAdopted),
     deviceAdapter(id, deviceName),
+    profileOrderAdapter(id, enabledLinks),
   ];
 }
 
@@ -695,7 +697,7 @@ export function startSync() {
   }
   useBrowser.subscribe((s, prev) => {
     if (!doc.enabled || running) return;
-    if (s.bookmarks !== prev.bookmarks || s.settings !== prev.settings || s.profiles !== prev.profiles || s.groups !== prev.groups) scheduleSync();
+    if (s.bookmarks !== prev.bookmarks || s.settings !== prev.settings || s.profiles !== prev.profiles || s.profileOrder !== prev.profileOrder || s.groups !== prev.groups) scheduleSync();
   });
   if (__DEV__) {
     (globalThis as { acSync?: object }).acSync = {

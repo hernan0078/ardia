@@ -204,6 +204,22 @@ export function deviceAdapter(deviceId: string, name: () => string, retired = fa
   };
 }
 
+export type ProfileOrderRecord = { o: string[] };
+
+export function profileOrderAdapter(deviceId: string, links: () => Record<string, { syncId: string }>, retired = false): Adapter {
+  const key = `porder:${deviceId}`;
+  return {
+    prefix: "porder:",
+    extract: () => {
+      if (retired) return { values: new Map(), ignore: (k) => k !== key };
+      const all = links();
+      const order = store().profileOrder.filter((id) => all[id] && store().profiles[id]).map((id) => all[id]!.syncId);
+      return { values: new Map([[key, { o: order } satisfies ProfileOrderRecord]]), ignore: (k) => k !== key };
+    },
+    apply: () => true,
+  };
+}
+
 type BookmarkValue = { k: "u" | "f"; p: string; t: string; u?: string; a: number; pos: string };
 
 export function bookmarksAdapter(profileId: string): Adapter {

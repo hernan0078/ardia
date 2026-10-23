@@ -2,7 +2,7 @@ import Foundation
 
 final class CompanionSync {
   static let appScope = "app"
-  static let keptPrefixes = ["prof:", "pth:", "dev:", "pin:", "pinrow:", "tabs:"]
+  static let keptPrefixes = ["prof:", "pth:", "dev:", "porder:", "pin:", "pinrow:", "tabs:"]
   static let tabsInterval: TimeInterval = 60
   static let maxSharedTabs = 30
   static let outboxLifetime: TimeInterval = 30 * 86_400
@@ -206,12 +206,33 @@ final class CompanionSync {
       Self.fill(&space, from: profile, names: names, me: state.deviceId)
       snapshot.spaces.append(space)
     }
-    snapshot.spaces.sort { a, b in a.isDefault != b.isDefault ? a.isDefault : a.name.localizedStandardCompare(b.name) == .orderedAscending }
+    snapshot.spaces = Self.ordered(snapshot.spaces, by: Self.macOrder(in: app, seen: seen, me: state.deviceId))
     snapshot.devices = names.filter { $0.key != state.deviceId }.map { id, name in
       DesktopDevice(id: id, name: name, lastSeen: seen[id].map { Date(timeIntervalSince1970: Double($0) / 1000) })
     }.sorted { ($0.lastSeen ?? .distantPast) > ($1.lastSeen ?? .distantPast) }
     snapshot.waitingForDownloads = pending
     return snapshot
+  }
+
+  static func macOrder(in app: Replica, seen: [String: Int64], me: String) -> [String] {
+    let orders = app.visible("porder:").compactMap { key, value -> (device: String, order: [String])? in
+      let device = String(key.dropFirst(7))
+      guard device != me, let order = (value as? [String: Any])?["o"] as? [String] else { return nil }
+      return (device, order)
+    }
+    return orders.max { (seen[$0.device] ?? 0) < (seen[$1.device] ?? 0) }?.order ?? []
+  }
+
+  static func ordered(_ spaces: [DesktopSpace], by order: [String]) -> [DesktopSpace] {
+    let rank = Dictionary(order.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+    return spaces.sorted { a, b in
+      switch (rank[a.id], rank[b.id]) {
+      case let (x?, y?): return x < y
+      case (_?, nil): return true
+      case (nil, _?): return false
+      default: return a.isDefault != b.isDefault ? a.isDefault : a.name.localizedStandardCompare(b.name) == .orderedAscending
+      }
+    }
   }
 
   static func fill(_ space: inout DesktopSpace, from replica: Replica, names: [String: String], me: String) {
