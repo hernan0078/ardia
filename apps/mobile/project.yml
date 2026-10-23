@@ -1,0 +1,118 @@
+name: ArdiaMobile
+options:
+  bundleIdPrefix: com.hernan
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: LSE6GR5F2W
+    CODE_SIGN_STYLE: Automatic
+    ARDIA_APP_GROUP: group.com.hernan.ardiamobile
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+targets:
+  ArdiaMobile:
+    type: application
+    platform: iOS
+    sources:
+      - App
+      - Shared
+      - path: ../../packages/sync/ios/Core/SyncCrypto.swift
+        group: SyncCore
+      - path: ../../packages/sync/ios/Core/SyncVault.swift
+        group: SyncCore
+      - path: ../../packages/sync/ios/Core/RecoveryPhrase.swift
+        group: SyncCore
+      - path: ../../packages/sync/ios/Core/Wordlist.swift
+        group: SyncCore
+      - path: ../../packages/sync/ios/Core/LegacyName.swift
+        group: SyncCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.hernan.ardiamobile
+        PRODUCT_NAME: Ardia
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
+        TARGETED_DEVICE_FAMILY: "1"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Ardia
+        ArdiaAppGroup: $(ARDIA_APP_GROUP)
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIStatusBarStyle: UIStatusBarStyleLightContent
+        NSCameraUsageDescription: Ardia uses the camera to scan the recovery-phrase QR code your Mac shows in Settings › Sync › Connect Another Device.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoadsInWebContent: true
+        CFBundleURLTypes:
+          - CFBundleURLName: com.hernan.ardiamobile
+            CFBundleURLSchemes:
+              - ardia-mobile
+        LSApplicationQueriesSchemes:
+          - https
+        ITSAppUsesNonExemptEncryption: false
+    entitlements:
+      path: App/ArdiaMobile.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - $(ARDIA_APP_GROUP)
+    dependencies:
+      - target: ArdiaShare
+        embed: true
+  ArdiaShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - ShareExtension
+      - Shared
+      - path: ../../packages/sync/ios/Core/SyncCrypto.swift
+        group: SyncCore
+      - path: ../../packages/sync/ios/Core/SyncVault.swift
+        group: SyncCore
+      - path: ../../packages/sync/ios/Core/RecoveryPhrase.swift
+        group: SyncCore
+      - path: ../../packages/sync/ios/Core/Wordlist.swift
+        group: SyncCore
+      - path: ../../packages/sync/ios/Core/LegacyName.swift
+        group: SyncCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.hernan.ardiamobile.share
+        PRODUCT_NAME: ArdiaShare
+        TARGETED_DEVICE_FAMILY: "1"
+    info:
+      path: ShareExtension/Info.plist
+      properties:
+        CFBundleDisplayName: Pin to Ardia
+        ArdiaAppGroup: $(ARDIA_APP_GROUP)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsWebPageWithMaxCount: 1
+              NSExtensionActivationSupportsText: true
+    entitlements:
+      path: ShareExtension/ArdiaShare.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - $(ARDIA_APP_GROUP)
+schemes:
+  ArdiaMobile:
+    build:
+      targets:
+        ArdiaMobile: all
+        ArdiaShare: all
+    run:
+      config: Debug

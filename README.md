@@ -109,6 +109,7 @@ packages/
   shaders/            Metal: New Tab effects + grained OKLab window backdrop
   import/             Import from other browsers (bookmarks, history, passwords, Arc spaces)
   core/               Pure TS: omnibox input → URL, suggestions, Dia-style breadcrumbs (tested)
+apps/mobile/          Ardia for iPhone: a SwiftUI browser that joins Ardia Sync and pins pages into the Mac's spaces
 ```
 
 

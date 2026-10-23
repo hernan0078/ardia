@@ -1,0 +1,43 @@
+import { readFileSync } from "node:fs";
+import assert from "node:assert/strict";
+const src = process.env.ARDIA_SYNC_SRC ?? new URL("../../../../packages/sync/src", import.meta.url).pathname;
+const { emptyScope, pull, visible } = await import(`${src}/scope.ts`);
+const { Clock } = await import(`${src}/hlc.ts`);
+const { assignPositions } = await import(`${src}/order.ts`);
+const transport = { read: async (scope: string) => JSON.parse(readFileSync(`dump-${scope}.json`, "utf8")), write: async () => "", remove: async () => {} };
+const clock = new Clock("macdeviceaaaaaaaaaaaaaaaaa");
+const scopes: Record<string, any> = {};
+for (const scope of ["app", "p:worksync", "p:personalsync"]) {
+  scopes[scope] = emptyScope();
+  await pull(scopes[scope], transport as any, scope, clock, Date.now());
+}
+const app = scopes["app"], work = scopes["p:worksync"];
+const phone = Object.keys(work.vv).find((d) => d !== "macdeviceaaaaaaaaaaaaaaaaa")!;
+console.log("devices:", Object.fromEntries(visible(app, "dev:")));
+console.log("work vv:", work.vv, "extra:", work.extra, "damaged:", work.damaged);
+const pins = [...visible(work, "pin:")];
+console.log("work pins:", pins);
+console.log("work rows:", [...visible(work, "pinrow:")]);
+const personal = scopes["p:personalsync"];
+console.log("phone tabs in Personal:", JSON.stringify(visible(personal, `tabs:${phone}`).get(`tabs:${phone}`)));
+assert.equal(work.vv[phone], 2, "a phone restored from an older backup numbers its next log after the ones already in the folder");
+assert.ok(visible(work, "pin:t:tab-mphonepin000004").size === 1, "the pin made after the restore arrives");
+assert.equal(personal.vv[phone], 1);
+assert.equal(visible(personal, `tabs:${phone}`).get(`tabs:${phone}`).tabs[0].u, "https://ardia.dev");
+assert.deepEqual(work.extra, {});
+assert.equal(visible(app, `dev:${phone}`).get(`dev:${phone}`).n, "Hernan’s iPhone");
+const x = pins.find(([k]) => k === "pin:t:tab-mphonepin000001")![1] as any;
+assert.deepEqual(Object.keys(x).sort(), ["g", "i", "pos", "t", "ti", "u"]);
+assert.equal(x.g, null); assert.equal(x.u, "https://x.com/ardia/status/1");
+assert.equal(visible(work, "pinrow:").get("pinrow:tab-mphonepin000001"), 1);
+const apple = pins.find(([k]) => k === "pin:t:tab-mphonepin000002")![1] as any;
+assert.equal(apple.g, "grp-1");
+const rowKeys = new Set([...visible(work, "pinrow:")].filter(([, v]) => v === 1).map(([k]) => (k as string).slice(7)));
+const placed = (g: string | null) => pins.filter(([k, v]: any) => k.startsWith("pin:t:") && v.g === g).map(([k, v]: any) => ({ row: g === null && rowKeys.has(k.slice(6)), pos: v.pos as string }));
+const windowOrder = (g: string | null) => {
+  const list = placed(g).sort((a, b) => (a.pos < b.pos ? -1 : a.pos > b.pos ? 1 : 0));
+  return [...list.filter((p) => !p.row), ...list.filter((p) => p.row)].map((p) => p.pos);
+};
+for (const g of [null, "grp-1"]) assert.deepEqual(assignPositions(windowOrder(g)), windowOrder(g), `the Mac keeps every position in ${g ?? "the pinned tabs"}`);
+assert.ok(pins.some(([k]) => k === "pin:t:tab-mphonepin000003"), "the phone's tile arrived");
+console.log("OK: the desktop merge accepts the phone's files; positions survive assignPositions");

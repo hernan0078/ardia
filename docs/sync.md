@@ -447,6 +447,34 @@ bookmark, settings, profile or group edit, and on Sync Now. A cycle:
   - Two instances launched in the same millisecond made the same store ids: `newId` now has a
     random part.
 
+## iPhone
+
+`apps/mobile` joins sync as one more device, with no change on the Mac. The user picks the sync folder
+in iCloud Drive with the Files picker (a security-scoped bookmark, shared with its share extension
+through an App Group) and enters or scans the phrase from Connect Another Device…; the entropy goes
+in the phone's Keychain under the App Group's access group.
+
+- It compiles `SyncCrypto`, `SyncVault`, `RecoveryPhrase`, `Wordlist` and `LegacyName` from
+  `packages/sync/ios/Core` (`SyncFolder` is macOS-only).
+- It reads the app scope and every `p:` scope, keeping `prof:`, `pth:`, `dev:`, `pin:`, `pinrow:`
+  and `tabs:` only. Passwords, history, bookmarks and settings are decrypted while reading and dropped
+  at once: the in-memory cache of opened files holds only the kept keys and each file's newest HLC.
+- It writes logs only: `dev:<id>` in the app scope, `tabs:<id>` (its open tabs) in the default
+  profile's scope, and `pin:t:<id>` with `pinrow:<id>` (or a tombstone for both, to unpin) in the
+  chosen profile's scope. A new row goes after the last pin, a new tile between the last tile and the
+  first row (the Mac's window order), a folder pin after the folder's last member, so `assignPositions`
+  keeps them. Ids are `tab-m…`.
+- Seqs per scope count up from 1 with no gaps. A batch is journaled with its seq in the phone's state
+  before it's written and rewritten byte for byte after a failure, as the Mac does. The next seq is
+  above the highest of its own the phone has seen in the folder, so a phone restored from an older
+  backup doesn't reuse one (tested). It never writes a snapshot and never removes a file.
+- Pins and unpins go to an outbox in the App Group first. The outbox items a batch carries are marked
+  in the same save as the journalled batch, so a crash between the two never sends them twice. Items
+  for a space or folder that hasn't downloaded yet wait, for up to 30 days and a day respectively.
+- The share extension runs one cycle only if the app isn't syncing (a non-blocking lock shared with
+  the app), and waits for it to finish; otherwise the app's next cycle sends the pin.
+- `apps/mobile/Tools/interop/run.sh` checks the files it writes against this package's `scope.ts`.
+
 ## Left for a person
 
 A real two-Mac run over iCloud Drive: turn on sync on one Mac, save the kit, enter the phrase on
