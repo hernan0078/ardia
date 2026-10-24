@@ -3,7 +3,7 @@ import Security
 
 enum AppGroup {
   static var identifier: String {
-    Bundle.main.object(forInfoDictionaryKey: "ArdiaAppGroup") as? String ?? "group.com.hernan.ardiamobile"
+    Bundle.main.object(forInfoDictionaryKey: "ArdiaAppGroup") as? String ?? "group.dev.ardia.mobile"
   }
 
   static var container: URL {
@@ -48,15 +48,14 @@ final class SharedStore {
   private var lockURL: URL { root.appendingPathComponent("sync.lock") }
   private var fallbackKeyURL: URL { root.appendingPathComponent(".sync-key") }
 
-  func withLock<T>(_ body: () throws -> T) rethrows -> T {
+  func withLock<T>(_ body: () throws -> T) throws -> T {
     let fd = open(lockURL.path, O_CREAT | O_RDWR, 0o600)
-    if fd >= 0 { flock(fd, LOCK_EX) }
-    defer {
-      if fd >= 0 {
-        flock(fd, LOCK_UN)
-        close(fd)
-      }
-    }
+    guard fd >= 0 else { throw CompanionError.lockUnavailable }
+    defer { close(fd) }
+    var locked = flock(fd, LOCK_EX)
+    while locked != 0, errno == EINTR { locked = flock(fd, LOCK_EX) }
+    guard locked == 0 else { throw CompanionError.lockUnavailable }
+    defer { flock(fd, LOCK_UN) }
     return try body()
   }
 
@@ -74,14 +73,16 @@ final class SharedStore {
   func saveState(_ state: CompanionState?) -> Bool { write(state, to: stateURL) }
 
   func loadOutbox() -> [OutboxItem] { read([OutboxItem].self, from: outboxURL) ?? [] }
-  func saveOutbox(_ items: [OutboxItem]) { write(items, to: outboxURL) }
+  @discardableResult
+  func saveOutbox(_ items: [OutboxItem]) -> Bool { write(items, to: outboxURL) }
 
-  func enqueue(_ item: OutboxItem) {
-    withLock {
+  @discardableResult
+  func enqueue(_ item: OutboxItem) -> Bool {
+    (try? withLock {
       var items = loadOutbox().filter { $0.id != item.id }
       items.append(item)
-      saveOutbox(items)
-    }
+      return saveOutbox(items)
+    }) ?? false
   }
 
   func loadSnapshot() -> DesktopSnapshot? { read(DesktopSnapshot.self, from: snapshotURL) }
@@ -182,8 +183,8 @@ final class SharedStore {
   @discardableResult
   private func write<T: Encodable>(_ value: T?, to url: URL) -> Bool {
     guard let value else {
-      try? FileManager.default.removeItem(at: url)
-      return true
+      guard FileManager.default.fileExists(atPath: url.path) else { return true }
+      return (try? FileManager.default.removeItem(at: url)) != nil
     }
     guard let data = try? JSONEncoder.companion.encode(value) else { return false }
     return (try? data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])) != nil
@@ -199,6 +200,7 @@ enum CompanionError: LocalizedError, Equatable {
   case keychain
   case unknownSpace
   case stateNotSaved
+  case lockUnavailable
 
   var errorDescription: String? {
     switch self {
@@ -210,6 +212,7 @@ enum CompanionError: LocalizedError, Equatable {
     case .keychain: "Couldn’t save the sync key to the Keychain."
     case .unknownSpace: "That space isn’t synced from your Mac anymore."
     case .stateNotSaved: "Couldn’t save sync state on this iPhone. Free up some space and try again."
+    case .lockUnavailable: "Another part of Ardia is syncing. Try again in a moment."
     }
   }
 }

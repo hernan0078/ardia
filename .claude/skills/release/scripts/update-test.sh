@@ -33,8 +33,8 @@ retag() {
 }
 installed_name="$(basename "$old")"
 root="$(git -C "$here" rev-parse --show-toplevel)"
-zip_name="$(sed -n 's/^ *public static let appFileName = "\(.*\)"$/\1/p' "$root/packages/sync/ios/Core/LegacyMigration.swift")"
-[[ "$zip_name" == *.app ]] || { echo "error: can't read the legacy app name from LegacyMigration.swift" >&2; exit 1; }
+zip_name="$(sed -n 's/^ *public static let appFileName = "\(.*\)"$/\1/p' "$root/packages/sync/ios/Core/LegacyName.swift")"
+[[ "$zip_name" == *.app ]] || { echo "error: can't read the legacy app name from LegacyName.swift" >&2; exit 1; }
 mkdir -p "$work/installed" "$work/new" "$work/feed" "$work/home"
 ditto "$old" "$work/installed/$installed_name"
 ditto "$new" "$work/new/$zip_name"

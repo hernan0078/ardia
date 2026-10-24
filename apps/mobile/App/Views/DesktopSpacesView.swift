@@ -20,7 +20,7 @@ struct DesktopSpacesView: View {
               .padding(.horizontal, 20)
               .padding(.bottom, 30)
           }
-          .refreshable { desktop.refresh() }
+          .refreshable { await desktop.refreshNow() }
         } else {
           Spacer()
           Text(desktop.statusLine).foregroundStyle(Palette.secondaryText).padding()
@@ -47,6 +47,7 @@ struct DesktopSpacesView: View {
         Image(systemName: "xmark").font(.system(size: 15, weight: .bold)).foregroundStyle(.white.opacity(0.75))
           .frame(width: 34, height: 34).background(Color.white.opacity(0.18), in: Circle())
       }
+      .accessibilityLabel("Close")
     }
     .padding(.horizontal, 26)
     .padding(.top, 30)
@@ -66,6 +67,7 @@ struct DesktopSpacesView: View {
                 .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
             .buttonStyle(PressStyle())
+            .accessibilityLabel(pin.displayTitle)
             .contextMenu { pinMenu(pin, space: space) }
           }
         }
@@ -111,7 +113,7 @@ struct DesktopSpacesView: View {
         if device.tabs.isEmpty {
           Text("No open tabs").font(.subheadline).foregroundStyle(Palette.secondaryText)
         }
-        ForEach(device.tabs, id: \.self) { link in
+        ForEach(Array(device.tabs.enumerated()), id: \.offset) { _, link in
           Button { openLink(link.url) } label: {
             rowLabel(icon: AnyView(FaviconView(url: link.url, size: 26)), title: link.title.isEmpty ? link.url : link.title)
           }

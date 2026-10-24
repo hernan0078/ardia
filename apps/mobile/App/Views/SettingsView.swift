@@ -33,9 +33,6 @@ struct SettingsView: View {
           NavigationLink { GlobalSiteSettingsView() } label: { row("Global Site Settings", symbol: "globe", color: .black) }
         }
         Section {
-          Button { UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!) } label: {
-            row("Set Ardia as Default Browser", symbol: "safari.fill", color: .purple, chevron: true)
-          }
           NavigationLink { AppIconPickerView() } label: {
             row("Change App Icon", symbol: "app.badge.fill", color: .blue, value: AppIconChoice.current.name)
           }
@@ -52,6 +49,10 @@ struct SettingsView: View {
             ForEach(ArchiveAfter.allCases) { Text($0.label).tag($0) }
           } label: { row("Archive Inactive Tabs", symbol: "archivebox.fill", color: .purple) }
           ToggleRow(title: "Show My Tabs on Mac", symbol: "macbook.and.iphone", color: .indigo, isOn: $browser.settings.shareTabsWithMac)
+          Picker(selection: $browser.settings.openAppLinks) {
+            ForEach(OpenAppLinks.allCases) { Text($0.label).tag($0) }
+          } label: { row("Open App Links in…", symbol: "arrow.up.forward.app.fill", color: .blue) }
+          ToggleRow(title: "Lock Private Tabs", symbol: "faceid", color: .green, isOn: $browser.settings.lockPrivateTabs)
           Button { confirmClear = true } label: { row("Clear Browsing Data…", symbol: "eraser.fill", color: .red) }
           Button {
             exportURL = exportTabs()
@@ -66,6 +67,9 @@ struct SettingsView: View {
           }
         }
         .listRowBackground(Color.white.opacity(0.08))
+        Section {
+          NavigationLink { AboutView() } label: { row("About Ardia", symbol: "info", color: .gray) }
+        }
       }
       .scrollContentBackground(.hidden)
       .foregroundStyle(.white)
@@ -196,7 +200,7 @@ struct ArchiveView: View {
         }
         .listRowBackground(Color.white.opacity(0.08))
       }
-      .onDelete { browser.archive.remove(atOffsets: $0) }
+      .onDelete { browser.removeArchived(at: $0) }
     }
     .scrollContentBackground(.hidden)
     .navigationTitle("Archive")
@@ -300,5 +304,42 @@ struct AppIconPickerView: View {
         }
       }
     }
+  }
+}
+
+struct AboutView: View {
+  private var version: String {
+    let info = Bundle.main.infoDictionary
+    return "\(info?["CFBundleShortVersionString"] as? String ?? "") (\(info?["CFBundleVersion"] as? String ?? ""))"
+  }
+
+  var body: some View {
+    List {
+      Section {
+        VStack(spacing: 10) {
+          FidgetLogo(size: 96)
+          Text("Ardia for iPhone").font(.title3.weight(.semibold))
+          Text(version).font(.footnote).foregroundStyle(Palette.secondaryText)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .listRowBackground(Color.clear)
+      }
+      Section("Acknowledgements") {
+        VStack(alignment: .leading, spacing: 6) {
+          Text("Ardia").font(.headline)
+          Text("Ardia’s own files are licensed under the Apache License 2.0. The sync code (encryption, the folder format and the recovery phrase) is shared with Ardia for Mac.")
+            .font(.footnote).foregroundStyle(Palette.secondaryText)
+        }
+        VStack(alignment: .leading, spacing: 6) {
+          Text("BIP-39 English wordlist").font(.headline)
+          Text("The recovery phrase uses the standard BIP-39 English wordlist (MIT License), the same list as Ardia for Mac and Dia.")
+            .font(.footnote).foregroundStyle(Palette.secondaryText)
+        }
+      }
+      .listRowBackground(Color.white.opacity(0.08))
+    }
+    .scrollContentBackground(.hidden)
+    .navigationTitle("About")
   }
 }

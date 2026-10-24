@@ -19,12 +19,12 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.hernan.ardiamobile</string>
+			<string>$(ARDIA_BUNDLE_ID)</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>ardia-mobile</string>
@@ -32,7 +32,7 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSApplicationQueriesSchemes</key>
@@ -46,6 +46,12 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>Ardia uses the camera to scan the recovery-phrase QR code your Mac shows in Settings › Sync › Connect Another Device.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Ardia can lock your private tabs with Face ID.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Ardia listens only while you search by voice.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Ardia turns what you say into a search, on your iPhone when it can.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -61,6 +67,8 @@
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 </dict>
 </plist>

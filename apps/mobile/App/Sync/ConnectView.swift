@@ -144,6 +144,7 @@ struct SyncSettingsView: View {
   @EnvironmentObject private var ui: UIStateModel
   @State private var name = ""
   @State private var confirmDisconnect = false
+  @State private var disconnectError: String?
 
   var body: some View {
     List {
@@ -160,7 +161,7 @@ struct SyncSettingsView: View {
           }
         }
         Section("This iPhone") {
-          TextField("Name", text: $name).onSubmit { desktop.rename(name) }
+          TextField("Name", text: $name).onSubmit(saveName)
           HStack {
             Text("Sync Folder")
             Spacer()
@@ -203,13 +204,38 @@ struct SyncSettingsView: View {
     }
     .listRowBackground(Color.white.opacity(0.08))
     .scrollContentBackground(.hidden)
+    .refreshable { await desktop.refreshNow(forceTabs: true) }
     .navigationTitle("Ardia on Your Mac")
     .onAppear {
       name = desktop.deviceName
       desktop.refresh()
     }
+    .onDisappear(perform: saveName)
     .confirmationDialog("Stop syncing this iPhone?", isPresented: $confirmDisconnect, titleVisibility: .visible) {
-      Button("Stop Syncing", role: .destructive) { Task { await desktop.disconnect() } }
+      Button("Stop Syncing", role: .destructive) { stop(force: false) }
+    }
+    .alert("Couldn’t reach the sync folder", isPresented: Binding(get: { disconnectError != nil }, set: { if !$0 { disconnectError = nil } })) {
+      Button("Forget Anyway", role: .destructive) { stop(force: true) }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text("\(disconnectError ?? "") Your Mac will keep listing this iPhone until you remove it there.")
+    }
+  }
+
+  private func saveName() {
+    guard desktop.connected else { return }
+    let clean = CompanionSync.cleanName(name)
+    name = clean
+    if clean != desktop.deviceName { desktop.rename(clean) }
+  }
+
+  private func stop(force: Bool) {
+    Task {
+      do {
+        try await desktop.disconnect(force: force)
+      } catch {
+        disconnectError = error.localizedDescription
+      }
     }
   }
 }

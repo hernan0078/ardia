@@ -33,13 +33,21 @@ struct PageMenuView: View {
                 tab.webView.findInteraction?.presentFindNavigator(showingReplace: false)
               }
             }
-            tile(tab.desktopMode ? "Mobile Site" : "Desktop Site", symbol: tab.desktopMode ? "iphone" : "desktopcomputer") {
-              tab.setDesktopMode(!tab.desktopMode)
-              ui.sheet = nil
+            tile("Reader", symbol: "doc.plaintext") {
+              Task {
+                if let article = await ReaderExtractor.extract(from: tab.webView) {
+                  ui.sheet = .reader(article)
+                } else {
+                  ui.sheet = nil
+                  ui.showToast("Reader isn’t available on this page")
+                }
+              }
             }
             tile(desktop.isPinned(tab.urlString) ? "Pinned" : "Pin", symbol: desktop.isPinned(tab.urlString) ? "pin.fill" : "pin") {
-              ui.sheet = desktop.connected ? .pin(SharedLink(url: tab.urlString, title: tab.displayTitle)) : .connect
+              guard let url = tab.url, SharedLink.isWeb(url) else { return }
+              ui.sheet = desktop.connected ? .pin(SharedLink(url: url.absoluteString, title: tab.displayTitle)) : .connect
             }
+            .disabled(!SharedLink.isWeb(tab.url))
             tile("Share", symbol: "square.and.arrow.up") {
               if let url = tab.url { ui.sheet = .share(url) }
             }
@@ -56,7 +64,7 @@ struct PageMenuView: View {
             browser.close(tab.id)
             ui.sheet = nil
           }
-          blockerRow
+          if browser.blocksAnything { blockerRow }
         }
         .padding(.horizontal, 18)
         .padding(.top, 26)
@@ -144,6 +152,11 @@ struct PageMenuView: View {
           Slider(value: $browser.settings.textZoom, in: 0.5...2, step: 0.1).tint(.white)
           Button { browser.settings.textZoom = min(2, browser.settings.textZoom + 0.1) } label: { Image(systemName: "textformat.size.larger").frame(width: 44, height: 36) }
         }
+        Divider().overlay(Color.white.opacity(0.1))
+        Toggle(isOn: Binding(get: { tab.desktopMode }, set: { tab.setDesktopMode($0) })) {
+          Label("Request Desktop Site", systemImage: "desktopcomputer").font(.system(size: 17))
+        }
+        .tint(.green)
       }
       .padding(18)
       .background(Color.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -179,11 +192,16 @@ struct SiteSettingsView: View {
     let host = browser.activeTab?.host ?? ""
     NavigationStack {
       List {
-        if !host.isEmpty {
-          Section("\(host.uppercased()) settings") {
-            ToggleRow(title: "Block Ads", symbol: "hand.raised.fill", color: .red, isOn: siteBinding(\.blockAds, host))
-            ToggleRow(title: "Block Cookie Banners", symbol: "birthday.cake.fill", color: .orange, isOn: siteBinding(\.blockCookieBanners, host))
-            ToggleRow(title: "Block Trackers", symbol: "eyeglasses", color: .yellow, isOn: siteBinding(\.blockTrackers, host))
+        if !host.isEmpty, browser.blocksAnything {
+          Section {
+            ToggleRow(title: "Block on This Site", symbol: "hand.raised.fill", color: .red, isOn: Binding(
+              get: { !browser.isAllowed(host) },
+              set: { browser.setBlocking($0, for: host) }
+            ))
+          } header: {
+            Text("\(host.uppercased()) settings")
+          } footer: {
+            Text("Turns Ardia’s \(blockedKinds) blocking on or off for \(host) only. Choose what Ardia blocks everywhere in Settings › Global Site Settings.")
           }
         }
         Section {
@@ -206,17 +224,9 @@ struct SiteSettingsView: View {
     }
   }
 
-  private func siteBinding(_ key: WritableKeyPath<BrowserSettings, Bool>, _ host: String) -> Binding<Bool> {
-    Binding {
-      browser.settings[keyPath: key] && !browser.isAllowed(host)
-    } set: { on in
-      if on {
-        browser.settings[keyPath: key] = true
-        browser.setBlocking(true, for: host)
-      } else {
-        browser.setBlocking(false, for: host)
-      }
-    }
+  private var blockedKinds: String {
+    let kinds = [browser.settings.blockAds ? "ad" : nil, browser.settings.blockTrackers ? "tracker" : nil, browser.settings.blockCookieBanners ? "cookie-banner" : nil].compactMap { $0 }
+    return ListFormatter.localizedString(byJoining: kinds)
   }
 }
 

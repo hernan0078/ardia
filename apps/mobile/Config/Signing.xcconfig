@@ -1,0 +1,4 @@
+DEVELOPMENT_TEAM =
+ARDIA_BUNDLE_ID = dev.ardia.mobile
+ARDIA_APP_GROUP = group.dev.ardia.mobile
+#include? "Signing.local.xcconfig"

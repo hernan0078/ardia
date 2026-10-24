@@ -460,9 +460,9 @@ in the phone's Keychain under the App Group's access group.
 - It reads the app scope and every `p:` scope, keeping `prof:`, `pth:`, `dev:`, `porder:`, `pin:`,
   `pinrow:` and `tabs:` only. Passwords, history, bookmarks and settings are decrypted while reading and dropped
   at once: the in-memory cache of opened files holds only the kept keys and each file's newest HLC.
-- It writes logs only: `dev:<id>` in the app scope, `tabs:<id>` (its open tabs) in the default
-  profile's scope, and `pin:t:<id>` with `pinrow:<id>` (or a tombstone for both, to unpin) in the
-  chosen profile's scope. A new row goes after the last pin, a new tile between the last tile and the
+- It writes logs only: `dev:<id>` in the app scope, `tabs:<id>` (its open tabs, removed again when
+  the user turns off Show My Tabs on Mac) in the default profile's scope, and `pin:t:<id>` in the
+  chosen profile's scope, adding `pinrow:<id>` only for a top-level row (an unpin tombstones both). A new row goes after the last pin, a new tile between the last tile and the
   first row (the Mac's window order), a folder pin after the folder's last member, so `assignPositions`
   keeps them. Ids are `tab-m…`.
 - Seqs per scope count up from 1 with no gaps. A batch is journaled with its seq in the phone's state

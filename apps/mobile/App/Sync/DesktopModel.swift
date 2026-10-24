@@ -23,11 +23,13 @@ final class DesktopModel: ObservableObject {
   private var timer: Timer?
   private var running = false
   private var again = false
-  var openTabs: () -> [SharedLink]? = { nil }
+  private var againForcesTabs = false
+  private var inBackground = false
+  var tabSharing: () -> (enabled: Bool, tabs: [SharedLink]) = { (true, []) }
 
   init() {
     let snapshot = SharedStore.shared.loadSnapshot() ?? DesktopSnapshot()
-    let isConnected = SharedStore.shared.loadState() != nil
+    let isConnected = SharedStore.shared.loadState() != nil && SharedStore.shared.loadKey() != nil
     self.snapshot = snapshot
     connected = isConnected
     status = isConnected ? (snapshot.updatedAt.map(Status.synced) ?? .syncing) : .notConnected
@@ -46,6 +48,8 @@ final class DesktopModel: ObservableObject {
   }
 
   func start() {
+    inBackground = false
+    engine.resume()
     timer?.invalidate()
     timer = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { [weak self] _ in
       Task { @MainActor in self?.refresh() }
@@ -56,6 +60,12 @@ final class DesktopModel: ObservableObject {
   func stop() {
     timer?.invalidate()
     timer = nil
+  }
+
+  func enterBackground() {
+    refresh(forceTabs: true)
+    inBackground = true
+    stop()
   }
 
   func chooseFolder(_ url: URL) throws {
@@ -74,14 +84,19 @@ final class DesktopModel: ObservableObject {
       connected = true
       if selectedSpaceId == nil || result.space(selectedSpaceId) == nil { selectedSpaceId = result.defaultSpace?.id }
     } catch {
+      if store.loadState() != nil, store.loadKey() != nil {
+        connected = true
+        status = .failed(error.localizedDescription)
+        return
+      }
       status = .notConnected
       throw error
     }
   }
 
-  func disconnect() async {
+  func disconnect(force: Bool = false) async throws {
     let engine = engine
-    _ = try? await run { engine.disconnect() }
+    try await run { try engine.disconnect(force: force) }
     connected = false
     snapshot = DesktopSnapshot()
     status = .notConnected
@@ -98,46 +113,54 @@ final class DesktopModel: ObservableObject {
   }
 
   func refresh(forceTabs: Bool = false) {
-    guard connected else { return }
+    Task { await refreshNow(forceTabs: forceTabs) }
+  }
+
+  func refreshNow(forceTabs: Bool = false) async {
+    guard connected, !inBackground else { return }
     if running {
       again = true
+      againForcesTabs = againForcesTabs || forceTabs
       return
     }
     running = true
     if case .failed = status { status = .syncing }
-    let tabs = openTabs()
+    let sharing = tabSharing()
     let engine = engine
-    Task {
-      do {
-        let result = try await run { try engine.sync(openTabs: tabs, forceTabs: forceTabs) }
-        apply(result)
-      } catch {
-        status = .failed(error.localizedDescription)
-      }
-      outboxCount = store.loadOutbox().count
-      running = false
-      if again || snapshot.waitingForDownloads > 0 {
-        let soon = again
-        again = false
-        Task {
-          try? await Task.sleep(for: .seconds(soon ? 0.2 : 3))
-          refresh()
-        }
+    do {
+      let result = try await run { try engine.sync(openTabs: sharing.tabs, shareTabs: sharing.enabled, forceTabs: forceTabs) }
+      apply(result)
+    } catch is CancellationError {
+    } catch {
+      status = .failed(error.localizedDescription)
+    }
+    outboxCount = store.loadOutbox().count
+    running = false
+    if again || snapshot.waitingForDownloads > 0 {
+      let soon = again
+      let force = againForcesTabs
+      again = false
+      againForcesTabs = false
+      Task {
+        try? await Task.sleep(for: .seconds(soon ? 0.2 : 3))
+        await refreshNow(forceTabs: force)
       }
     }
   }
 
-  func pin(url: String, title: String, spaceId: String, folderId: String? = nil, asRow: Bool) {
+  func pin(url: String, title: String, spaceId: String, folderId: String? = nil, asRow: Bool) async -> Bool {
     store.lastSpaceId = spaceId
-    enqueue(.pin(PinRequest(id: PinRequest.newId(), url: url, title: title, spaceId: spaceId, folderId: folderId, asRow: asRow, createdAt: Date())))
+    return await enqueue(.pin(PinRequest(id: PinRequest.newId(), url: url, title: title, spaceId: spaceId, folderId: folderId, asRow: asRow, createdAt: Date()))).value
   }
 
-  private func enqueue(_ item: OutboxItem) {
+  @discardableResult
+  private func enqueue(_ item: OutboxItem) -> Task<Bool, Never> {
     let store = store
-    outboxCount += 1
-    Task {
-      _ = try? await run { store.enqueue(item) }
+    return Task {
+      let saved = (try? await run { store.enqueue(item) }) ?? false
+      if saved { outboxCount += 1 }
       refresh()
+      return saved
     }
   }
 
@@ -164,8 +187,17 @@ final class DesktopModel: ObservableObject {
   }
 
   private func run<T>(_ work: @escaping () throws -> T) async throws -> T {
-    let task = UIApplication.shared.beginBackgroundTask(withName: "Ardia Sync")
-    defer { if task != .invalid { UIApplication.shared.endBackgroundTask(task) } }
+    let engine = engine
+    var task = UIBackgroundTaskIdentifier.invalid
+    task = UIApplication.shared.beginBackgroundTask(withName: "Ardia Sync") {
+      engine.cancel()
+      if task != .invalid { UIApplication.shared.endBackgroundTask(task) }
+      task = .invalid
+    }
+    defer {
+      if task != .invalid { UIApplication.shared.endBackgroundTask(task) }
+      task = .invalid
+    }
     return try await withCheckedThrowingContinuation { continuation in
       queue.async { continuation.resume(with: Result { try work() }) }
     }

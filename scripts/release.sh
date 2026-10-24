@@ -49,7 +49,7 @@ sparkle="$macos/Pods/Sparkle/bin"
 if [ -n "${SPARKLE_ACCOUNT:-}" ]; then
   sparkle_account="$SPARKLE_ACCOUNT"
 else
-  legacy_account="$(sed -n 's/^ *public static let appName = "\(.*\)"$/\1/p' "$root/packages/sync/ios/Core/LegacyMigration.swift" | tr '[:upper:]' '[:lower:]')"
+  legacy_account="$(sed -n 's/^ *public static let appName = "\(.*\)"$/\1/p' "$root/packages/sync/ios/Core/LegacyName.swift" | tr '[:upper:]' '[:lower:]')"
   sparkle_account=ardia
   for account in ardia $legacy_account; do
     if "$sparkle/generate_keys" --account "$account" -p >/dev/null 2>&1; then sparkle_account="$account"; break; fi
@@ -341,8 +341,8 @@ if [ "$notarize" = 1 ]; then
 fi
 
 echo "==> Package"
-legacy_app="$(sed -n 's/^ *public static let appFileName = "\(.*\)"$/\1/p' "$root/packages/sync/ios/Core/LegacyMigration.swift")"
-[[ "$legacy_app" == *.app ]] || die "can't read the legacy app name from LegacyMigration.swift"
+legacy_app="$(sed -n 's/^ *public static let appFileName = "\(.*\)"$/\1/p' "$root/packages/sync/ios/Core/LegacyName.swift")"
+[[ "$legacy_app" == *.app ]] || die "can't read the legacy app name from LegacyName.swift"
 update_dir="$dist/update"
 rm -rf "$update_dir" && mkdir -p "$update_dir"
 ditto "$app" "$update_dir/$legacy_app"

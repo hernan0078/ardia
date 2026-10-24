@@ -5,14 +5,15 @@ struct TabSwitcherView: View {
   @EnvironmentObject private var ui: UIStateModel
   @State private var focusedId: String?
 
-  private var ordered: [BrowserTab] { browser.tabs }
+  private var ordered: [BrowserTab] { browser.visibleTabs }
 
   var body: some View {
     GeometryReader { geo in
       let cardWidth = geo.size.width * 0.62
       let cardHeight = min(geo.size.height * 0.68, cardWidth * 2.05)
       VStack(spacing: 14) {
-        Spacer(minLength: 20)
+        modePicker
+        Spacer(minLength: 12)
         header
         if ordered.isEmpty {
           VStack(spacing: 10) {
@@ -46,27 +47,63 @@ struct TabSwitcherView: View {
         }
         Spacer(minLength: 10)
         HStack {
-          CircleButton(symbol: "laptopcomputer", size: 50) { ui.sheet = .spaces }
+          if browser.privateMode {
+            Menu {
+              Button(role: .destructive) { browser.closeAllPrivateTabs() } label: { Label("Close All Private Tabs", systemImage: "xmark") }
+            } label: {
+              Image(systemName: "eyes").font(.system(size: 20, weight: .semibold)).foregroundStyle(.white)
+                .frame(width: 50, height: 50).background(Color.white.opacity(0.14), in: Circle())
+            }
+          } else {
+            CircleButton(symbol: "laptopcomputer", size: 50, label: "Your Mac’s Spaces") { ui.sheet = .spaces }
+          }
           Spacer()
           PlusButton { ui.startSearch(newTab: true) }
           Spacer()
-          CircleButton(symbol: "gearshape", size: 50) { ui.sheet = .settings }
+          CircleButton(symbol: "gearshape", size: 50, label: "Settings") { ui.sheet = .settings }
         }
         .padding(.horizontal, 26)
         .padding(.bottom, 4)
       }
     }
-    .onAppear { focusedId = browser.activeTabId ?? browser.tabs.last?.id }
+    .onAppear { focusedId = browser.activeTabId ?? browser.visibleTabs.last?.id }
+    .onChange(of: browser.privateMode) { _, _ in focusedId = browser.activeTabId ?? browser.visibleTabs.last?.id }
+  }
+
+  private var modePicker: some View {
+    HStack(spacing: 4) {
+      modeButton("Tabs", count: browser.tabs.count - browser.privateTabs.count, on: !browser.privateMode) { browser.setPrivateMode(false) }
+      modeButton("Private", count: browser.privateTabs.count, on: browser.privateMode) { browser.setPrivateMode(true) }
+    }
+    .padding(4)
+    .background(Color.white.opacity(0.08), in: Capsule())
+    .padding(.top, 8)
+  }
+
+  private func modeButton(_ title: String, count: Int, on: Bool, action: @escaping () -> Void) -> some View {
+    Button {
+      withAnimation(.spring(response: 0.3)) { action() }
+    } label: {
+      HStack(spacing: 6) {
+        if title == "Private" { Image(systemName: "eyes") }
+        Text(count > 0 ? "\(title) \(count)" : title)
+      }
+      .font(.subheadline.weight(.semibold))
+      .foregroundStyle(on ? Color.black : .white.opacity(0.8))
+      .padding(.horizontal, 16)
+      .frame(height: 34)
+      .background(on ? Color.white : .clear, in: Capsule())
+    }
+    .buttonStyle(.plain)
   }
 
   private var header: some View {
     let tab = browser.tab(focusedId)
     return HStack(spacing: 10) {
       if let tab {
-        FaviconView(url: tab.urlString, size: 26)
-        Text(tab.displayTitle).font(.system(size: 19, weight: .medium)).lineLimit(1)
+        FocusedTabTitle(tab: tab)
       } else {
-        Text("\(browser.tabs.count) Tabs").font(.system(size: 19, weight: .medium))
+        Text("\(ordered.count) Tabs").font(.system(size: 19, weight: .medium))
       }
     }
     .foregroundStyle(.white)
@@ -140,5 +177,14 @@ struct TabCard: View {
           }
         }
     )
+  }
+}
+
+struct FocusedTabTitle: View {
+  @ObservedObject var tab: BrowserTab
+
+  var body: some View {
+    FaviconView(url: tab.urlString, size: 26)
+    Text(tab.displayTitle).font(.system(size: 19, weight: .medium)).lineLimit(1)
   }
 }

@@ -9,43 +9,71 @@ struct Suggestion: Identifiable, Hashable {
 }
 
 struct SearchPanel: View {
+  var floating = false
   @EnvironmentObject private var browser: BrowserModel
   @EnvironmentObject private var desktop: DesktopModel
   @EnvironmentObject private var ui: UIStateModel
   @FocusState private var focused: Bool
   @State private var remote: [String] = []
   @State private var fetch: Task<Void, Never>?
+  @StateObject private var voice = VoiceSearch()
 
   var body: some View {
-    ZStack(alignment: .bottom) {
-      if !browser.tabs.isEmpty || ui.switcher {
-        Color.black.opacity(0.35).ignoresSafeArea().onTapGesture { dismiss() }
-      }
+    ZStack(alignment: floating ? .top : .bottom) {
+      Color.black.opacity(0.35).ignoresSafeArea().onTapGesture { dismiss() }
       VStack(spacing: 6) {
-        Capsule().fill(Color.white.opacity(0.25)).frame(width: 40, height: 5).padding(.top, 8)
-        field
-        ScrollView {
-          LazyVStack(spacing: 0) {
-            ForEach(suggestions) { suggestion in
-              row(suggestion)
-            }
-          }
-          .padding(.bottom, 8)
+        if !floating {
+          Capsule().fill(Color.white.opacity(0.25)).frame(width: 40, height: 5).padding(.top, 8)
         }
-        .scrollDismissesKeyboard(.never)
-        .frame(maxHeight: 330)
-        .fixedSize(horizontal: false, vertical: true)
+        field
+        if voice.state == .listening {
+          ListeningView(voice: voice)
+        } else {
+          if case .denied(let message) = voice.state {
+            Label(message, systemImage: "mic.slash").font(.footnote).foregroundStyle(.orange).padding(.top, 6)
+          }
+          ScrollView {
+            LazyVStack(spacing: 0) {
+              ForEach(suggestions) { suggestion in
+                row(suggestion)
+              }
+            }
+            .padding(.bottom, 8)
+          }
+          .scrollDismissesKeyboard(.never)
+          .frame(maxHeight: 330)
+          .fixedSize(horizontal: false, vertical: true)
+        }
       }
       .padding(.horizontal, 14)
-      .background(
-        UnevenRoundedRectangle(topLeadingRadius: 40, topTrailingRadius: 40, style: .continuous)
-          .fill(.ultraThinMaterial)
-          .overlay(UnevenRoundedRectangle(topLeadingRadius: 40, topTrailingRadius: 40, style: .continuous).fill(Color.black.opacity(0.28)))
-          .ignoresSafeArea(edges: .bottom)
-      )
-      .gesture(DragGesture().onEnded { value in if value.translation.height > 80 { dismiss() } })
+      .padding(.vertical, floating ? 10 : 0)
+      .background {
+        if floating {
+          RoundedRectangle(cornerRadius: 32, style: .continuous)
+            .fill(.ultraThinMaterial)
+            .overlay(RoundedRectangle(cornerRadius: 32, style: .continuous).fill(Color.black.opacity(0.32)))
+            .shadow(color: .black.opacity(0.4), radius: 30, y: 12)
+        } else {
+          UnevenRoundedRectangle(topLeadingRadius: 40, topTrailingRadius: 40, style: .continuous)
+            .fill(.ultraThinMaterial)
+            .overlay(UnevenRoundedRectangle(topLeadingRadius: 40, topTrailingRadius: 40, style: .continuous).fill(Color.black.opacity(0.28)))
+            .ignoresSafeArea(edges: .bottom)
+        }
+      }
+      .frame(maxWidth: floating ? 580 : .infinity)
+      .padding(.top, floating ? 24 : 0)
+      .padding(.horizontal, floating ? 20 : 0)
+      .gesture(DragGesture().onEnded { value in if floating ? value.translation.height < -60 : value.translation.height > 80 { dismiss() } })
     }
-    .onAppear { focused = true }
+    .onAppear {
+      if ui.voiceRequested {
+        ui.voiceRequested = false
+        listen()
+      } else {
+        focused = true
+      }
+    }
+    .onDisappear { voice.stop(submit: false) }
     .onChange(of: ui.searchText) { _, text in loadRemote(text) }
   }
 
@@ -64,12 +92,23 @@ struct SearchPanel: View {
           Image(systemName: "xmark.circle.fill").font(.system(size: 20)).foregroundStyle(.white.opacity(0.5))
         }
       }
-      if ui.searchInNewTab && browser.activeTab != nil {
-        Button { ui.searchInNewTab = false } label: {
-          Image(systemName: "plus.square.on.square").font(.system(size: 19)).foregroundStyle(.white.opacity(0.8))
+      if ui.searchText.isEmpty {
+        Button(action: listen) {
+          Image(systemName: "mic").font(.system(size: 21)).foregroundStyle(.white.opacity(0.75))
         }
-        .accessibilityLabel("Opens in a new tab")
+        .accessibilityLabel("Search by Voice")
       }
+      Button {
+        browser.setPrivateMode(!browser.privateMode)
+        ui.searchInNewTab = true
+      } label: {
+        Image(systemName: "eyes")
+          .font(.system(size: 20, weight: browser.privateMode ? .bold : .regular))
+          .foregroundStyle(browser.privateMode ? Color.purple : .white.opacity(0.75))
+          .frame(width: 34, height: 34)
+          .background(browser.privateMode ? Color.white.opacity(0.9) : .clear, in: Circle())
+      }
+      .accessibilityLabel(browser.privateMode ? "Private Browsing On" : "Private Browsing")
     }
     .padding(.horizontal, 22)
     .frame(height: 64)
@@ -119,34 +158,48 @@ struct SearchPanel: View {
 
   private var suggestions: [Suggestion] {
     let q = ui.searchText.trimmingCharacters(in: .whitespaces).lowercased()
+    let history = browser.privateMode ? [] : browser.history
     let pins = desktop.snapshot.spaces.flatMap { space in
       (space.tiles + space.rows + space.folders.flatMap(\.pins)).map { (space.name, $0) }
     }
     if q.isEmpty {
-      var out: [Suggestion] = browser.history.prefix(4).map { Suggestion(kind: .history, title: $0.title.isEmpty ? $0.url : $0.title, url: $0.url) }
+      var out: [Suggestion] = history.prefix(4).map { Suggestion(kind: .history, title: $0.title.isEmpty ? $0.url : $0.title, url: $0.url) }
       if let space = desktop.selectedSpace {
         out += (space.tiles + space.rows).prefix(4).map { Suggestion(kind: .pin(space.name), title: $0.displayTitle, url: $0.url) }
       }
       return out
     }
     var out: [Suggestion] = []
-    if let url = browser.resolve(q), !url.absoluteString.contains("?q="), url.host() != nil {
+    if let url = browser.resolve(ui.searchText.trimmingCharacters(in: .whitespacesAndNewlines)), !url.absoluteString.contains("?q="), url.host() != nil {
       out.append(Suggestion(kind: .url, title: ui.searchText, url: url.absoluteString))
     }
     out.append(Suggestion(kind: .search, title: ui.searchText, url: ui.searchText))
     let matches = { (title: String, url: String) in title.lowercased().contains(q) || url.lowercased().contains(q) }
-    out += browser.tabs.filter { matches($0.displayTitle, $0.urlString) }.prefix(2).map { Suggestion(kind: .openTab($0.id), title: $0.displayTitle, url: $0.urlString) }
+    out += browser.visibleTabs.filter { matches($0.displayTitle, $0.urlString) }.prefix(2).map { Suggestion(kind: .openTab($0.id), title: $0.displayTitle, url: $0.urlString) }
     out += pins.filter { matches($0.1.displayTitle, $0.1.url) }.prefix(3).map { Suggestion(kind: .pin($0.0), title: $0.1.displayTitle, url: $0.1.url) }
-    out += browser.history.filter { matches($0.title, $0.url) }.prefix(3).map { Suggestion(kind: .history, title: $0.title.isEmpty ? $0.url : $0.title, url: $0.url) }
+    out += history.filter { matches($0.title, $0.url) }.prefix(3).map { Suggestion(kind: .history, title: $0.title.isEmpty ? $0.url : $0.title, url: $0.url) }
     out += remote.filter { $0.lowercased() != q }.prefix(4).map { Suggestion(kind: .search, title: $0, url: $0) }
     var seen = Set<String>()
     return out.filter { seen.insert("\($0.kind == .search ? "s" : "u")|\($0.kind == .search ? $0.title.lowercased() : $0.url)").inserted }
   }
 
+  private func listen() {
+    focused = false
+    voice.reset()
+    Task {
+      await voice.start { text in
+        ui.searchText = text
+        go(text)
+      }
+    }
+  }
+
   private func loadRemote(_ text: String) {
     fetch?.cancel()
+    remote = []
     let query = text.trimmingCharacters(in: .whitespaces)
-    guard browser.settings.searchSuggestions, query.count >= 2, let url = browser.settings.searchEngine.suggestionsURL(query) else {
+    guard browser.settings.searchSuggestions, !browser.privateMode, query.count >= 2, !query.contains("://"), browser.resolve(query)?.host() == browser.settings.searchEngine.searchURL(query)?.host(),
+          let url = browser.settings.searchEngine.suggestionsURL(query) else {
       remote = []
       return
     }
@@ -154,7 +207,10 @@ struct SearchPanel: View {
       try? await Task.sleep(for: .milliseconds(180))
       guard !Task.isCancelled, let (data, _) = try? await URLSession.shared.data(from: url) else { return }
       let json = try? JSONSerialization.jsonObject(with: data)
-      let list = ((json as? [Any])?.dropFirst().first as? [String]) ?? []
+      let list: [String] = {
+        if let values = json as? [Any], let suggestions = values.dropFirst().first as? [String] { return suggestions }
+        return (json as? [[String: Any]])?.compactMap { $0["phrase"] as? String } ?? []
+      }()
       if !Task.isCancelled { remote = list }
     }
   }
@@ -186,7 +242,6 @@ struct SearchPanel: View {
   }
 
   private func dismiss() {
-    guard !browser.tabs.isEmpty || ui.switcher else { return }
     close()
   }
 }
@@ -199,12 +254,8 @@ struct SpaceHomeView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 18) {
       HStack {
-        if let space = desktop.selectedSpace {
-          SpaceBadge(space: space, size: 22, selected: true)
-          Text(space.name).font(.system(size: 30, weight: .bold, design: .rounded))
-        } else {
-          Text("Ardia").font(.system(size: 30, weight: .bold, design: .rounded))
-        }
+        FidgetLogo(size: 42)
+        Text(desktop.selectedSpace?.name ?? "Ardia").font(.system(size: 30, weight: .bold, design: .rounded)).lineLimit(1)
         Spacer()
         CircleButton(symbol: "gearshape", size: 40) { ui.sheet = .settings }
       }
@@ -247,7 +298,8 @@ struct SpaceHomeView: View {
           PlusButton { ui.startSearch(newTab: true) }
           Spacer()
           TabStackButton { ui.switcher = true }
-            .opacity(browser.tabs.isEmpty ? 0 : 1)
+            .opacity(browser.visibleTabs.isEmpty ? 0 : 1)
+            .allowsHitTesting(!browser.visibleTabs.isEmpty)
         }
         .padding(.horizontal, 6)
       }

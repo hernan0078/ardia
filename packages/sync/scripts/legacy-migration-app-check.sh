@@ -49,8 +49,8 @@ echo "==> as an old install"
 node "$here/legacy-migration-e2e.mjs" --seed-from "$made" "$home"
 
 echo "==> a copy under the old file name moves itself, then migrates it at launch"
-legacy_app="$(sed -n 's/^ *public static let appFileName = "\(.*\)"$/\1/p' "$repo/packages/sync/ios/Core/LegacyMigration.swift")"
-[[ "$legacy_app" == *.app ]] || { echo "can't read the legacy app name from LegacyMigration.swift" >&2; exit 1; }
+legacy_app="$(sed -n 's/^ *public static let appFileName = "\(.*\)"$/\1/p' "$repo/packages/sync/ios/Core/LegacyName.swift")"
+[[ "$legacy_app" == *.app ]] || { echo "can't read the legacy app name from LegacyName.swift" >&2; exit 1; }
 binary="$(plutil -extract CFBundleExecutable raw "$app/Contents/Info.plist")"
 mkdir -p "$apps" && { cp -Rc "$app" "$apps/$legacy_app" 2>/dev/null || ditto "$app" "$apps/$legacy_app"; }
 echo "    (from $apps)"

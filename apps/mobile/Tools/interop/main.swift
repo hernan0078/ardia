@@ -5,7 +5,7 @@ func fail(_ message: String) -> Never {
   FileHandle.standardError.write(Data((message + "\n").utf8))
   exit(1)
 }
-guard args.count >= 4 else { fail("usage: interop seed|phone-pin|dump <folder> <phrase-file> [scope]") }
+guard args.count >= 4, args[1] != "dump" || args.count >= 5 else { fail("usage: interop new-phrase|seed|phone-pin <folder> <phrase-file>, or interop dump <folder> <phrase-file> <scope>") }
 let command = args[1]
 let folder = URL(fileURLWithPath: args[2], isDirectory: true)
 let phrase = (try? String(contentsOfFile: args[3], encoding: .utf8)) ?? ""
@@ -77,7 +77,7 @@ case "dump":
   let listing = SyncVault(folder: folder, keys: keys).read(scope: args[4], skipping: [])
   let out: [String: Any] = [
     "files": listing.files.map { ["id": $0.id, "payload": String(decoding: $0.payload, as: UTF8.self)] },
-    "pending": listing.pending, "damaged": [] as [Any], "present": listing.present,
+    "pending": listing.pending, "damaged": listing.damaged.map { ["id": $0.id, "age": $0.age * 1000] }, "present": listing.present,
   ]
   FileHandle.standardOutput.write(json(out))
 default:

@@ -103,13 +103,13 @@ reconstructed from Dia's own New Tab effects.
 ```
 apps/
   browser/            Expo + react-native-macos app (UI in src/, Xcode project in macos/)
+  mobile/             Ardia for iPhone: a SwiftUI browser that joins Ardia Sync and pins pages into the Mac's spaces
 packages/
   ardiacore/             The engine: Chromium 155's framework with our layer (Chrome tabs hosted in our views), JS API in src/
   shell/              Native menu bar + shortcuts → JS, windows, SF Symbols, native primitives
   shaders/            Metal: New Tab effects + grained OKLab window backdrop
   import/             Import from other browsers (bookmarks, history, passwords, Arc spaces)
   core/               Pure TS: omnibox input → URL, suggestions, Dia-style breadcrumbs (tested)
-apps/mobile/          Ardia for iPhone: a SwiftUI browser that joins Ardia Sync and pins pages into the Mac's spaces
 ```
 
 

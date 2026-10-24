@@ -60,6 +60,8 @@ struct PinComposer: View {
                       .overlay(Capsule().stroke(s.id == spaceId ? Color(hex: s.swatchHex) : .clear, lineWidth: 1.5))
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(s.name)
+                    .accessibilityAddTraits(s.id == spaceId ? .isSelected : [])
                   }
                 }
                 .padding(.vertical, 2)
@@ -116,6 +118,10 @@ struct PinComposer: View {
     }
     .foregroundStyle(.white)
     .background(Palette.sheet.ignoresSafeArea())
+    .onChange(of: snapshot) { _, fresh in
+      if fresh.space(spaceId) == nil { spaceId = fresh.defaultSpace?.id }
+      if let folderId, fresh.space(spaceId)?.folders.contains(where: { $0.id == folderId }) != true { self.folderId = nil }
+    }
   }
 
   private var preview: some View {
@@ -147,5 +153,6 @@ struct PinComposer: View {
         .background(selected ? Color.white.opacity(0.25) : Color.white.opacity(0.08), in: Capsule())
     }
     .buttonStyle(.plain)
+    .accessibilityAddTraits(selected ? .isSelected : [])
   }
 }

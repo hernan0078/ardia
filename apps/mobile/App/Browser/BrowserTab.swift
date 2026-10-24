@@ -5,6 +5,7 @@ import WebKit
 @MainActor
 final class BrowserTab: NSObject, ObservableObject, Identifiable {
   let id: String
+  let isPrivate: Bool
   let webView: WKWebView
   @Published var title: String
   @Published var url: URL?
@@ -23,8 +24,9 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
   private var lastOffset: CGFloat = 0
   weak var browser: BrowserModel?
 
-  init(id: String = UUID().uuidString, url: URL?, title: String = "", lastActive: Date = Date(), interactionState: Data? = nil, configuration: WKWebViewConfiguration) {
+  init(id: String = UUID().uuidString, url: URL?, title: String = "", lastActive: Date = Date(), interactionState: Data? = nil, configuration: WKWebViewConfiguration, isPrivate: Bool = false) {
     self.id = id
+    self.isPrivate = isPrivate
     self.url = url
     self.title = title
     self.lastActive = lastActive
@@ -32,12 +34,19 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
     super.init()
     webView.allowsBackForwardNavigationGestures = true
     webView.isFindInteractionEnabled = true
+    #if DEBUG
     webView.isInspectable = true
+    #endif
     webView.scrollView.contentInsetAdjustmentBehavior = .automatic
     webView.backgroundColor = UIColor(Palette.canvas)
     webView.isOpaque = false
     webView.navigationDelegate = self
     webView.uiDelegate = self
+    if #available(iOS 26.0, *) {
+      webView.scrollView.bottomEdgeEffect.isHidden = true
+      webView.scrollView.rightEdgeEffect.isHidden = true
+      webView.scrollView.leftEdgeEffect.isHidden = true
+    }
     observe()
     pendingState = interactionState
   }
@@ -74,8 +83,11 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
   }
 
   private func scrolled(_ scroll: UIScrollView) {
-    guard scroll.isTracking || scroll.isDecelerating else { return }
     let y = scroll.contentOffset.y
+    guard scroll.isTracking || scroll.isDecelerating else {
+      lastOffset = y
+      return
+    }
     let delta = y - lastOffset
     lastOffset = y
     if y <= 10 {
@@ -133,19 +145,34 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
 extension BrowserTab: WKNavigationDelegate, WKUIDelegate {
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
     captureFavicon()
-    if let url = webView.url { browser?.recordVisit(url: url, title: webView.title ?? "") }
+    if !isPrivate, let url = webView.url { browser?.recordVisit(url: url, title: webView.title ?? "") }
     browser?.scheduleSave()
   }
 
   func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
     guard let url = navigationAction.request.url, let scheme = url.scheme?.lowercased() else { return .allow }
+    if ["http", "https"].contains(scheme), navigationAction.navigationType == .linkActivated, navigationAction.targetFrame?.isMainFrame ?? true,
+       browser?.settings.openAppLinks == .app, url.host() != webView.url?.host(),
+       await UIApplication.shared.open(url, options: [.universalLinksOnly: true]) {
+      return .cancel
+    }
     if ["http", "https", "about", "data", "blob", "file"].contains(scheme) { return .allow }
-    await UIApplication.shared.open(url)
+    if navigationAction.navigationType == .linkActivated, navigationAction.targetFrame?.isMainFrame ?? true {
+      await UIApplication.shared.open(url)
+    }
     return .cancel
   }
 
+  func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+    if webView.url != nil {
+      webView.reload()
+    } else if let url {
+      webView.load(URLRequest(url: url))
+    }
+  }
+
   func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-    if let url = navigationAction.request.url { browser?.openInNewTab(url) }
+    if let url = navigationAction.request.url { browser?.openInNewTab(url, isPrivate: isPrivate) }
     return nil
   }
 }

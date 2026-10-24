@@ -33,6 +33,7 @@ final class ShareModel: ObservableObject {
     case sending
     case done(String)
     case queued(String)
+    case failed(String)
   }
 
   @Published var phase: Phase = .loading
@@ -53,14 +54,13 @@ final class ShareModel: ObservableObject {
       return
     }
     link = found
-    phase = snapshot.spaces.isEmpty ? .loading : .ready
-    if link.title.isEmpty || link.title == link.url {
-      if let title = await LinkExtractor.pageTitle(link.url) { link.title = title }
-    }
-    if snapshot.spaces.isEmpty {
-      if let fresh = await refreshSnapshot() { snapshot = fresh }
-      phase = .ready
-    }
+    phase = .loading
+    let needsTitle = link.title.isEmpty || link.title == link.url
+    async let title = needsTitle ? LinkExtractor.pageTitle(link.url) : nil
+    async let fresh = refreshSnapshot()
+    if let title = await title { link.title = title }
+    if let fresh = await fresh { snapshot = fresh }
+    phase = .ready
   }
 
   private func refreshSnapshot() async -> DesktopSnapshot? {
@@ -76,10 +76,14 @@ final class ShareModel: ObservableObject {
     let store = store
     phase = .sending
     Task {
-      let sent = await Task.detached { () -> Bool in
-        store.enqueue(.pin(request))
-        return (try? CompanionSync(store: store).syncIfIdle()) != nil
+      let (saved, sent) = await Task.detached { () -> (Bool, Bool) in
+        guard store.enqueue(.pin(request)) else { return (false, false) }
+        return (true, (try? CompanionSync(store: store).syncIfIdle()) != nil)
       }.value
+      guard saved else {
+        phase = .failed("Couldn’t save the pin on this iPhone. Try again.")
+        return
+      }
       let stillQueued = store.loadOutbox().contains { $0.id == OutboxItem.pin(request).id }
       phase = sent && !stillQueued ? .done("Pinned to \(spaceName) on \(macName)") : .queued("Saved. It goes to \(spaceName) the next time you open Ardia.")
       UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -106,6 +110,8 @@ struct ShareRootView: View {
       message(symbol: "laptopcomputer.and.iphone", title: "Connect Ardia first", detail: "Open Ardia on this iPhone and connect it to Ardia on your Mac. Then you can pin from any app.")
     case .noLink:
       message(symbol: "link.badge.plus", title: "No link to pin", detail: "Share a web page or a post with a link in it.")
+    case .failed(let text):
+      message(symbol: "exclamationmark.triangle", title: "Not pinned", detail: text)
     case .ready:
       PinComposer(link: model.link, snapshot: model.snapshot, initialSpaceId: SharedStore.shared.lastSpaceId, asRow: SharedStore.shared.pinAsRow) { space, folder, row in
         model.pin(spaceId: space, folderId: folder, asRow: row)
@@ -153,7 +159,7 @@ enum LinkExtractor {
       for provider in item.attachments ?? [] {
         if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier),
            let url = try? await provider.loadItem(forTypeIdentifier: UTType.url.identifier) as? URL,
-           url.scheme?.hasPrefix("http") == true {
+           SharedLink.isWeb(url) {
           return SharedLink(url: url.absoluteString, title: cleanTitle(title, url: url))
         }
         if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier),
@@ -171,7 +177,7 @@ enum LinkExtractor {
   static func firstURL(in text: String) -> URL? {
     let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
     let matches = detector?.matches(in: text, range: NSRange(text.startIndex..., in: text)) ?? []
-    return matches.compactMap(\.url).first { $0.scheme?.hasPrefix("http") == true }
+    return matches.compactMap(\.url).first { SharedLink.isWeb($0) }
   }
 
   static func cleanTitle(_ raw: String, url: URL) -> String {

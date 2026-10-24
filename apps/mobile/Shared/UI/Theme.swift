@@ -83,18 +83,22 @@ final class FaviconCache {
   private var memory: [String: UIImage] = [:]
   private var inFlight: [String: Task<UIImage?, Never>] = [:]
   private let directory: URL = {
-    let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("Favicons", isDirectory: true)
+    let url = AppGroup.container.appendingPathComponent("Favicons", isDirectory: true)
     try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
   }()
 
-  func cached(_ host: String) -> UIImage? {
+  func cached(_ host: String) -> UIImage? { memory[host] }
+
+  func fromDisk(_ host: String) async -> UIImage? {
     if let image = memory[host] { return image }
-    if let data = try? Data(contentsOf: directory.appendingPathComponent(host)), let image = UIImage(data: data) {
-      memory[host] = image
-      return image
-    }
-    return nil
+    let file = directory.appendingPathComponent(host)
+    let image = await Task.detached(priority: .utility) { () -> UIImage? in
+      guard let data = try? Data(contentsOf: file) else { return nil }
+      return UIImage(data: data)?.preparingForDisplay()
+    }.value
+    if let image { memory[host] = image }
+    return image
   }
 
   func store(_ data: Data, for host: String) {
@@ -106,6 +110,7 @@ final class FaviconCache {
   func image(for host: String, hint: URL? = nil) async -> UIImage? {
     if let image = cached(host) { return image }
     if let task = inFlight[host] { return await task.value }
+    if let image = await fromDisk(host) { return image }
     let task = Task<UIImage?, Never> {
       var candidates = [hint].compactMap { $0 }
       candidates += ["apple-touch-icon.png", "favicon.ico"].compactMap { URL(string: "https://\(host)/\($0)") }
@@ -136,7 +141,11 @@ struct FaviconView: View {
 
   var body: some View {
     Group {
-      if let emoji, !emoji.isEmpty, !emoji.hasPrefix("symbol:") {
+      if let emoji, emoji.hasPrefix("symbol:") {
+        Image(systemName: String(emoji.dropFirst("symbol:".count)))
+          .font(.system(size: size * 0.7, weight: .semibold))
+          .foregroundStyle(.white)
+      } else if let emoji, !emoji.isEmpty {
         Text(emoji).font(.system(size: size * 0.8))
       } else if let image {
         Image(uiImage: image).resizable().interpolation(.high).scaledToFit()
@@ -152,7 +161,9 @@ struct FaviconView: View {
     .frame(width: size, height: size)
     .task(id: host) {
       image = FaviconCache.shared.cached(host)
-      if image == nil { image = await FaviconCache.shared.image(for: host) }
+      guard image == nil else { return }
+      let found = await FaviconCache.shared.image(for: host)
+      if !Task.isCancelled { image = found }
     }
   }
 }

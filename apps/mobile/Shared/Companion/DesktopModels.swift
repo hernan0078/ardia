@@ -81,6 +81,9 @@ struct DesktopDeviceTabs: Codable, Equatable, Identifiable {
 struct SharedLink: Codable, Equatable, Hashable {
   var url: String
   var title: String
+
+  static func isWeb(_ url: String) -> Bool { isWeb(URL(string: url)) }
+  static func isWeb(_ url: URL?) -> Bool { ["http", "https"].contains(url?.scheme?.lowercased() ?? "") && url?.host() != nil }
 }
 
 enum OutboxItem: Codable, Equatable, Identifiable {

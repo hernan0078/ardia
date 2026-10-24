@@ -1,3 +1,4 @@
+import LocalAuthentication
 import SwiftUI
 import WebKit
 
@@ -56,6 +57,17 @@ enum ArchiveAfter: Int, CaseIterable, Codable, Identifiable {
   }
 }
 
+enum LaunchAction: String, Equatable {
+  case search, voice, privateSearch = "private"
+}
+
+enum OpenAppLinks: String, CaseIterable, Codable, Identifiable {
+  case app, ardia
+
+  var id: String { rawValue }
+  var label: String { self == .app ? "Native App" : "Ardia" }
+}
+
 struct BrowserSettings: Codable, Equatable {
   var searchEngine: SearchEngine = .google
   var searchSuggestions = true
@@ -69,6 +81,29 @@ struct BrowserSettings: Codable, Equatable {
   var shareTabsWithMac = true
   var textZoom: Double = 1
   var allowedSites: [String] = []
+  var openAppLinks: OpenAppLinks = .app
+  var lockPrivateTabs = false
+
+  init() {}
+
+  init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    let d = BrowserSettings()
+    searchEngine = (try? c.decodeIfPresent(SearchEngine.self, forKey: .searchEngine)) ?? d.searchEngine
+    searchSuggestions = (try? c.decodeIfPresent(Bool.self, forKey: .searchSuggestions)) ?? d.searchSuggestions
+    autoOpenKeyboard = (try? c.decodeIfPresent(Bool.self, forKey: .autoOpenKeyboard)) ?? d.autoOpenKeyboard
+    archiveAfter = (try? c.decodeIfPresent(ArchiveAfter.self, forKey: .archiveAfter)) ?? d.archiveAfter
+    blockAds = (try? c.decodeIfPresent(Bool.self, forKey: .blockAds)) ?? d.blockAds
+    blockTrackers = (try? c.decodeIfPresent(Bool.self, forKey: .blockTrackers)) ?? d.blockTrackers
+    blockCookieBanners = (try? c.decodeIfPresent(Bool.self, forKey: .blockCookieBanners)) ?? d.blockCookieBanners
+    collapseBottomBar = (try? c.decodeIfPresent(Bool.self, forKey: .collapseBottomBar)) ?? d.collapseBottomBar
+    swipeToNavigate = (try? c.decodeIfPresent(Bool.self, forKey: .swipeToNavigate)) ?? d.swipeToNavigate
+    shareTabsWithMac = (try? c.decodeIfPresent(Bool.self, forKey: .shareTabsWithMac)) ?? d.shareTabsWithMac
+    textZoom = (try? c.decodeIfPresent(Double.self, forKey: .textZoom)) ?? d.textZoom
+    allowedSites = (try? c.decodeIfPresent([String].self, forKey: .allowedSites)) ?? d.allowedSites
+    openAppLinks = (try? c.decodeIfPresent(OpenAppLinks.self, forKey: .openAppLinks)) ?? d.openAppLinks
+    lockPrivateTabs = (try? c.decodeIfPresent(Bool.self, forKey: .lockPrivateTabs)) ?? d.lockPrivateTabs
+  }
 }
 
 struct SavedTab: Codable {
@@ -106,12 +141,16 @@ struct SavedSession: Codable {
 final class BrowserModel: ObservableObject {
   @Published private(set) var tabs: [BrowserTab] = []
   @Published var activeTabId: String?
+  @Published var launchAction: LaunchAction?
+  @Published var privateMode = false
+  @Published var privateLocked = false
   @Published var archive: [ArchivedTab] = []
   @Published var history: [VisitedPage] = []
   @Published var settings = BrowserSettings() {
     didSet {
       if settings.blockAds != oldValue.blockAds || settings.blockTrackers != oldValue.blockTrackers || settings.blockCookieBanners != oldValue.blockCookieBanners || settings.allowedSites != oldValue.allowedSites {
         Task { await applyContentRules() }
+        applyUserScripts()
       }
       if settings.swipeToNavigate != oldValue.swipeToNavigate {
         for tab in tabs { tab.webView.allowsBackForwardNavigationGestures = settings.swipeToNavigate }
@@ -124,6 +163,7 @@ final class BrowserModel: ObservableObject {
   }
 
   let configuration: WKWebViewConfiguration
+  private var privateConfiguration: WKWebViewConfiguration?
   private var saveTask: Task<Void, Never>?
   private var ruleList: WKContentRuleList?
   private let sessionURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("session.json")
@@ -136,10 +176,58 @@ final class BrowserModel: ObservableObject {
     self.configuration = configuration
     restore()
     archiveInactiveTabs()
+    applyUserScripts()
     Task { await applyContentRules() }
   }
 
   var activeTab: BrowserTab? { tabs.first { $0.id == activeTabId } }
+  var visibleTabs: [BrowserTab] { tabs.filter { $0.isPrivate == privateMode } }
+  var privateTabs: [BrowserTab] { tabs.filter(\.isPrivate) }
+
+  private var controllers: [WKUserContentController] {
+    [configuration.userContentController] + (privateConfiguration.map { [$0.userContentController] } ?? [])
+  }
+
+  private func privateConfig() -> WKWebViewConfiguration {
+    if let privateConfiguration { return privateConfiguration }
+    let config = WKWebViewConfiguration()
+    config.allowsInlineMediaPlayback = true
+    config.mediaTypesRequiringUserActionForPlayback = .audio
+    config.defaultWebpagePreferences.preferredContentMode = .mobile
+    config.websiteDataStore = .nonPersistent()
+    if let ruleList { config.userContentController.add(ruleList) }
+    privateConfiguration = config
+    applyUserScripts()
+    return config
+  }
+
+  func setPrivateMode(_ on: Bool) {
+    guard on != privateMode else { return }
+    activeTab?.captureSnapshot()
+    privateMode = on
+    activeTabId = visibleTabs.max { $0.lastActive < $1.lastActive }?.id
+    activeTab?.ensureLoaded()
+  }
+
+  func lockPrivateTabsIfNeeded() {
+    if settings.lockPrivateTabs, !privateTabs.isEmpty { privateLocked = true }
+  }
+
+  func unlockPrivateTabs() async -> Bool {
+    let context = LAContext()
+    var error: NSError?
+    guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
+      privateLocked = false
+      return true
+    }
+    let ok = (try? await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Unlock your private tabs")) ?? false
+    if ok { privateLocked = false }
+    return ok
+  }
+
+  func closeAllPrivateTabs() {
+    for tab in privateTabs { close(tab.id) }
+  }
 
   func tab(_ id: String?) -> BrowserTab? { tabs.first { $0.id == id } }
 
@@ -171,8 +259,10 @@ final class BrowserModel: ObservableObject {
   }
 
   @discardableResult
-  func openInNewTab(_ url: URL, activate: Bool = true) -> BrowserTab {
-    let tab = makeTab(url: url)
+  func openInNewTab(_ url: URL, activate: Bool = true, isPrivate: Bool? = nil) -> BrowserTab {
+    let isPrivate = isPrivate ?? privateMode
+    if isPrivate != privateMode { setPrivateMode(isPrivate) }
+    let tab = makeTab(url: url, isPrivate: isPrivate)
     tab.ensureLoaded()
     tabs.append(tab)
     if activate { select(tab.id) }
@@ -181,15 +271,15 @@ final class BrowserModel: ObservableObject {
   }
 
   func openOrSwitch(to urlString: String) {
-    if let existing = tabs.first(where: { $0.urlString == urlString }) {
+    if let existing = visibleTabs.first(where: { $0.urlString == urlString }) {
       select(existing.id)
     } else if let url = URL(string: urlString) {
       openInNewTab(url)
     }
   }
 
-  private func makeTab(url: URL?, id: String = UUID().uuidString, title: String = "", lastActive: Date = Date(), state: Data? = nil) -> BrowserTab {
-    let tab = BrowserTab(id: id, url: url, title: title, lastActive: lastActive, interactionState: state, configuration: configuration)
+  private func makeTab(url: URL?, id: String = UUID().uuidString, title: String = "", lastActive: Date = Date(), state: Data? = nil, isPrivate: Bool = false) -> BrowserTab {
+    let tab = BrowserTab(id: id, url: url, title: title, lastActive: lastActive, interactionState: state, configuration: isPrivate ? privateConfig() : configuration, isPrivate: isPrivate)
     tab.browser = self
     tab.webView.allowsBackForwardNavigationGestures = settings.swipeToNavigate
     tab.webView.pageZoom = settings.textZoom
@@ -208,13 +298,22 @@ final class BrowserModel: ObservableObject {
   func close(_ id: String) {
     guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
     let tab = tabs[index]
-    if let url = tab.url?.absoluteString, url.hasPrefix("http") {
-      archive.insert(ArchivedTab(id: tab.id, url: url, title: tab.displayTitle, archivedAt: Date()), at: 0)
+    if !tab.isPrivate, let url = tab.url, SharedLink.isWeb(url) {
+      archive.insert(ArchivedTab(id: tab.id, url: url.absoluteString, title: tab.displayTitle, archivedAt: Date()), at: 0)
       archive = Array(archive.prefix(200))
     }
     tab.webView.stopLoading()
     tabs.remove(at: index)
-    if activeTabId == id { activeTabId = nil }
+    if activeTabId == id {
+      let siblings = visibleTabs
+      let next = siblings.last { tabs.firstIndex(of: $0)! < index } ?? siblings.first
+      activeTabId = next?.id
+      next?.ensureLoaded()
+    }
+    if tab.isPrivate, privateTabs.isEmpty {
+      privateConfiguration = nil
+      privateLocked = false
+    }
     scheduleSave()
   }
 
@@ -230,7 +329,7 @@ final class BrowserModel: ObservableObject {
   func archiveInactiveTabs() {
     guard settings.archiveAfter != .never else { return }
     let cutoff = Date().addingTimeInterval(-Double(settings.archiveAfter.rawValue) * 3600)
-    for tab in tabs where tab.lastActive < cutoff && tab.id != activeTabId { close(tab.id) }
+    for tab in tabs where !tab.isPrivate && tab.lastActive < cutoff && tab.id != activeTabId { close(tab.id) }
   }
 
   func recordVisit(url: URL, title: String) {
@@ -257,13 +356,19 @@ final class BrowserModel: ObservableObject {
   }
 
   var openLinks: [SharedLink] {
-    tabs.sorted { $0.lastActive > $1.lastActive }.compactMap { tab in
-      guard let url = tab.url?.absoluteString, url.hasPrefix("http") else { return nil }
-      return SharedLink(url: url, title: tab.displayTitle)
+    tabs.filter { !$0.isPrivate }.sorted { $0.lastActive > $1.lastActive }.compactMap { tab in
+      guard let url = tab.url, SharedLink.isWeb(url) else { return nil }
+      return SharedLink(url: url.absoluteString, title: tab.displayTitle)
     }
   }
 
   func isAllowed(_ host: String) -> Bool { settings.allowedSites.contains(host) }
+  var blocksAnything: Bool { settings.blockAds || settings.blockTrackers || settings.blockCookieBanners }
+
+  func removeArchived(at offsets: IndexSet) {
+    archive.remove(atOffsets: offsets)
+    scheduleSave()
+  }
 
   func setBlocking(_ on: Bool, for host: String) {
     if on {
@@ -276,14 +381,29 @@ final class BrowserModel: ObservableObject {
   private func applyContentRules() async {
     let json = ContentRules.json(ads: settings.blockAds, trackers: settings.blockTrackers, cookieBanners: settings.blockCookieBanners, allowed: settings.allowedSites)
     let list = try? await WKContentRuleListStore.default().compileContentRuleList(forIdentifier: "ardia-rules", encodedContentRuleList: json)
-    let controller = configuration.userContentController
-    controller.removeAllContentRuleLists()
-    if let list { controller.add(list) }
+    for controller in controllers {
+      controller.removeAllContentRuleLists()
+      if let list { controller.add(list) }
+    }
     for tab in tabs {
       tab.webView.configuration.userContentController.removeAllContentRuleLists()
       if let list { tab.webView.configuration.userContentController.add(list) }
     }
     ruleList = list
+  }
+
+  private func applyUserScripts() {
+    var scripts: [WKUserScript] = []
+    if settings.blockCookieBanners {
+      scripts.append(WKUserScript(source: ContentRules.declineCookiePrompts(allowed: settings.allowedSites), injectionTime: .atDocumentEnd, forMainFrameOnly: false))
+    }
+    if settings.blockAds {
+      scripts.append(WKUserScript(source: ContentRules.hideEmptyAdBars(allowed: settings.allowedSites), injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+    }
+    for controller in controllers {
+      controller.removeAllUserScripts()
+      scripts.forEach(controller.addUserScript)
+    }
   }
 
   func scheduleSave() {
@@ -297,8 +417,8 @@ final class BrowserModel: ObservableObject {
 
   func save() {
     let session = SavedSession(
-      tabs: tabs.map { SavedTab(id: $0.id, url: $0.url?.absoluteString, title: $0.title, lastActive: $0.lastActive, interactionState: $0.savedInteractionState) },
-      activeId: activeTabId,
+      tabs: tabs.filter { !$0.isPrivate }.map { SavedTab(id: $0.id, url: $0.url?.absoluteString, title: $0.title, lastActive: $0.lastActive, interactionState: $0.savedInteractionState) },
+      activeId: activeTab?.isPrivate == true ? nil : activeTabId,
       archive: archive,
       history: history,
       settings: settings

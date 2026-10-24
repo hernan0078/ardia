@@ -11,6 +11,14 @@ final class CompanionSync {
 
   let store: SharedStore
   private var cache: [String: [String: [String: Any]]] = [:]
+  private let cancelLock = NSLock()
+  private var cancelled = false
+
+  func cancel() { cancelLock.withLock { cancelled = true } }
+  func resume() { cancelLock.withLock { cancelled = false } }
+  private func checkCancelled() throws {
+    if cancelLock.withLock({ cancelled }) { throw CancellationError() }
+  }
 
   init(store: SharedStore = .shared) {
     self.store = store
@@ -42,25 +50,31 @@ final class CompanionSync {
         throw names.contains(where: { Base32.isTag($0) }) ? CompanionError.phraseMismatch : CompanionError.noSyncData
       }
     }
-    guard store.saveKey(entropy) else { throw CompanionError.keychain }
-    let saved = store.withLock {
-      store.saveState(CompanionState(deviceId: SyncKeys.newFileId(), deviceName: deviceName))
+    let name = Self.cleanName(deviceName)
+    let saved = try store.withLock { () -> Bool in
+      if let existing = store.loadState(), store.loadKey() == entropy { return store.saveState(existing) }
+      guard store.saveKey(entropy) else { return false }
+      return store.saveState(CompanionState(deviceId: SyncKeys.newFileId(), deviceName: name))
     }
-    guard saved else { throw CompanionError.stateNotSaved }
+    guard saved else { throw CompanionError.keychain }
     cache = [:]
     return try sync()
   }
 
-  func disconnect() {
-    _ = try? store.withLock {
-      try session { vault, state in
-        var ops: [String: [[String: Any]]] = [Self.appScope: [op(&state, "dev:\(state.deviceId)", nil)]]
-        if let scope = state.publishedTabsScope { ops[scope, default: []].append(op(&state, "tabs:\(state.deviceId)", nil)) }
-        for (scope, list) in ops { try append(list, to: scope, vault: vault, state: &state) }
-        try flushJournal(vault: vault, state: &state)
+  func disconnect(force: Bool = false) throws {
+    do {
+      try store.withLock {
+        try session { vault, state in
+          var ops: [String: [[String: Any]]] = [Self.appScope: [op(&state, "dev:\(state.deviceId)", nil), op(&state, "porder:\(state.deviceId)", nil)]]
+          if let scope = state.publishedTabsScope { ops[scope, default: []].append(op(&state, "tabs:\(state.deviceId)", nil)) }
+          for (scope, list) in ops { try journal(list, to: scope, state: &state) }
+          try flushJournal(vault: vault, state: &state)
+        }
       }
+    } catch {
+      if !force { throw error }
     }
-    store.withLock {
+    try store.withLock {
       store.saveState(nil)
       store.saveOutbox([])
       store.saveSnapshot(nil)
@@ -69,24 +83,29 @@ final class CompanionSync {
     cache = [:]
   }
 
+  static func cleanName(_ name: String) -> String {
+    let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? "iPhone" : String(trimmed.prefix(60))
+  }
+
   func rename(_ name: String) {
-    store.withLock {
+    _ = try? store.withLock {
       guard var state = store.loadState() else { return }
-      state.deviceName = name
+      state.deviceName = Self.cleanName(name)
       store.saveState(state)
     }
   }
 
   @discardableResult
-  func sync(openTabs: [SharedLink]? = nil, forceTabs: Bool = false) throws -> DesktopSnapshot {
-    try store.withLock { try cycle(openTabs: openTabs, forceTabs: forceTabs) }
+  func sync(openTabs: [SharedLink]? = nil, shareTabs: Bool = true, forceTabs: Bool = false) throws -> DesktopSnapshot {
+    try store.withLock { try cycle(openTabs: openTabs, shareTabs: shareTabs, forceTabs: forceTabs) }
   }
 
   func syncIfIdle() throws -> DesktopSnapshot? {
-    try store.withLockIfFree { try cycle(openTabs: nil, forceTabs: false) }
+    try store.withLockIfFree { try cycle(openTabs: nil, shareTabs: true, forceTabs: false) }
   }
 
-  private func cycle(openTabs: [SharedLink]?, forceTabs: Bool) throws -> DesktopSnapshot {
+  private func cycle(openTabs: [SharedLink]?, shareTabs: Bool, forceTabs: Bool) throws -> DesktopSnapshot {
     try session { vault, state in
       try flushJournal(vault: vault, state: &state)
       var snapshot = try readSnapshot(vault: vault, state: &state)
@@ -95,7 +114,11 @@ final class CompanionSync {
         state.publishedDeviceName = state.deviceName
       }
       try flushOutbox(vault: vault, state: &state, snapshot: &snapshot)
-      if let openTabs { try publishTabs(openTabs, force: forceTabs, vault: vault, state: &state, snapshot: snapshot) }
+      if !shareTabs {
+        try retractTabs(vault: vault, state: &state)
+      } else if let openTabs {
+        try publishTabs(openTabs, force: forceTabs, vault: vault, state: &state, snapshot: snapshot)
+      }
       snapshot.updatedAt = Date()
       store.saveSnapshot(snapshot)
       return snapshot
@@ -142,6 +165,7 @@ final class CompanionSync {
   private func flushJournal(vault: SyncVault, state: inout CompanionState) throws {
     for scope in state.journal.keys.sorted() {
       while let entry = state.journal[scope]?.first {
+        try checkCancelled()
         let id = try vault.write(scope: scope, payload: Data(entry.payload.utf8))
         if let file = try? JSONSerialization.jsonObject(with: Data(entry.payload.utf8)) as? [String: Any] {
           cache[scope, default: [:]][id] = Replica.slim(file, keeping: Self.keeps)
@@ -168,7 +192,8 @@ final class CompanionSync {
     return (Array(known.values), listing.pending.count)
   }
 
-  private func replica(_ scope: String, vault: SyncVault, state: inout CompanionState, pending: inout Int) -> Replica {
+  private func replica(_ scope: String, vault: SyncVault, state: inout CompanionState, pending: inout Int) throws -> Replica {
+    try checkCancelled()
     let read = files(in: scope, vault: vault)
     pending += read.pending
     var clock = HybridClock(device: state.deviceId, last: state.clock)
@@ -182,7 +207,7 @@ final class CompanionSync {
 
   private func readSnapshot(vault: SyncVault, state: inout CompanionState) throws -> DesktopSnapshot {
     var pending = 0
-    let app = replica(Self.appScope, vault: vault, state: &state, pending: &pending)
+    let app = try replica(Self.appScope, vault: vault, state: &state, pending: &pending)
     var snapshot = DesktopSnapshot()
     var seen: [String: Int64] = app.seen
     var names: [String: String] = [:]
@@ -201,7 +226,7 @@ final class CompanionSync {
         accentHex: Self.accent(fromTheme: app.value("pth:\(id)"))
       )
       let scope = Self.profileScope(id)
-      let profile = replica(scope, vault: vault, state: &state, pending: &pending)
+      let profile = try replica(scope, vault: vault, state: &state, pending: &pending)
       seen.merge(profile.seen) { max($0, $1) }
       Self.fill(&space, from: profile, names: names, me: state.deviceId)
       snapshot.spaces.append(space)
@@ -220,7 +245,11 @@ final class CompanionSync {
       guard device != me, let order = (value as? [String: Any])?["o"] as? [String] else { return nil }
       return (device, order)
     }
-    return orders.max { (seen[$0.device] ?? 0) < (seen[$1.device] ?? 0) }?.order ?? []
+    return orders.max {
+      let a = seen[$0.device] ?? 0
+      let b = seen[$1.device] ?? 0
+      return a == b ? $0.device < $1.device : a < b
+    }?.order ?? []
   }
 
   static func ordered(_ spaces: [DesktopSpace], by order: [String]) -> [DesktopSpace] {
@@ -365,7 +394,7 @@ final class CompanionSync {
 
   private func publishTabs(_ tabs: [SharedLink], force: Bool, vault: SyncVault, state: inout CompanionState, snapshot: DesktopSnapshot) throws {
     guard let target = snapshot.defaultSpace.map({ Self.profileScope($0.id) }) else { return }
-    let list = Array(tabs.filter { $0.url.hasPrefix("http") }.prefix(Self.maxSharedTabs))
+    let list = Array(tabs.filter { SharedLink.isWeb($0.url) }.prefix(Self.maxSharedTabs))
     let due = force || (state.publishedTabsAt.map { Date().timeIntervalSince($0) > Self.tabsInterval } ?? true)
     guard due, list != state.publishedTabs || target != state.publishedTabsScope else { return }
     if let old = state.publishedTabsScope, old != target {
@@ -376,5 +405,13 @@ final class CompanionSync {
     state.publishedTabs = list
     state.publishedTabsScope = target
     state.publishedTabsAt = Date()
+  }
+
+  private func retractTabs(vault: SyncVault, state: inout CompanionState) throws {
+    guard let scope = state.publishedTabsScope else { return }
+    try append([op(&state, "tabs:\(state.deviceId)", nil)], to: scope, vault: vault, state: &state)
+    state.publishedTabs = nil
+    state.publishedTabsScope = nil
+    state.publishedTabsAt = nil
   }
 }

@@ -41,23 +41,38 @@ No change to the desktop app is needed.
 
 ## Build
 
-Needs Xcode and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`); the
-`.xcodeproj` is generated, not checked in.
+Needs Xcode 27.1 or later (the app runs on iOS 18 and later, and uses the iOS 27.1 hinge APIs on foldables) and [XcodeGen](https://github.com/yonaskolb/XcodeGen)
+(`brew install xcodegen`); the `.xcodeproj` is generated, not checked in.
+
+Signing comes from `Config/Signing.xcconfig`: no team, bundle ID `dev.ardia.mobile` and App Group
+`group.dev.ardia.mobile`. To sign with your own team, put your values in `Config/Signing.local.xcconfig`
+(git-ignored), for example:
+
+```
+DEVELOPMENT_TEAM = ABCDE12345
+ARDIA_BUNDLE_ID = com.example.ardia
+ARDIA_APP_GROUP = group.com.example.ardia
+```
 
 ```bash
 cd apps/mobile
 xcodegen generate
 ```
 
-Then open `ArdiaMobile.xcodeproj`, or build and install from the command line:
+Then open `ArdiaMobile.xcodeproj`, or build from the command line:
 
 ```bash
 xcodebuild -project ArdiaMobile.xcodeproj -scheme ArdiaMobile -destination 'id=<device udid>' -allowProvisioningUpdates build
 ```
 
-Signing team, bundle ID and App Group are at the top of `project.yml` (`DEVELOPMENT_TEAM`,
-`ARDIA_APP_GROUP`, and the two `PRODUCT_BUNDLE_IDENTIFIER`s); change them to your own.
+To install that build on a connected device:
 
 ```bash
-apps/mobile/Tools/interop/run.sh
+xcrun devicectl device install app --device <device udid> <derived data>/Build/Products/Debug-iphoneos/Ardia.app
+```
+
+From `apps/mobile`, check the sync files against the Mac's merge:
+
+```bash
+Tools/interop/run.sh
 ```

@@ -18,16 +18,16 @@ struct ArdiaApp: App {
       switch phase {
       case .active:
         let browser = browser
-        desktop.openTabs = { [weak browser] in
-          guard let browser, browser.settings.shareTabsWithMac else { return nil }
-          return browser.openLinks
+        desktop.tabSharing = { [weak browser] in
+          guard let browser else { return (true, []) }
+          return (browser.settings.shareTabsWithMac, browser.openLinks)
         }
         browser.archiveInactiveTabs()
         desktop.start()
       case .background:
+        browser.lockPrivateTabsIfNeeded()
         browser.save()
-        desktop.refresh(forceTabs: true)
-        desktop.stop()
+        desktop.enterBackground()
       default:
         break
       }
@@ -36,12 +36,14 @@ struct ArdiaApp: App {
 
   private func handle(_ url: URL) {
     guard url.scheme == "ardia-mobile" else {
-      browser.openInNewTab(url)
+      if SharedLink.isWeb(url) { browser.openInNewTab(url) }
       return
     }
     let target = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "url" }?.value
-    if url.host() == "open", let target, let page = URL(string: target) {
-      browser.openInNewTab(page)
+    if url.host() == "open", let target, let page = URL(string: target), SharedLink.isWeb(page) {
+      browser.openInNewTab(page, isPrivate: false)
+    } else if let action = url.host().flatMap(LaunchAction.init(rawValue:)) {
+      browser.launchAction = action
     }
   }
 
