@@ -71,6 +71,25 @@ test("hovering the button peeks after the delay; leaving both closes after the g
   assert.equal(shown(), null);
 });
 
+test("moving from one window's peek to another window's button still closes the first", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  S().hydrate({ profiles: { default: PERSONAL }, profileOrder: ["default"] });
+  const first = S().createWindow({ url: "https://a.example/" });
+  const second = S().createWindow({ url: "https://b.example/" });
+  S().upsertDownload(download("a"));
+  for (const w of [first, second]) S().setDownloadsOpen(w, false);
+  peek.dismissDownloadsPeek();
+  peek.enterDownloadsPeek(first, "button");
+  t.mock.timers.tick(peek.PEEK_DELAY_MS);
+  assert.equal(shown(), first);
+  peek.leaveDownloadsPeek(first, "button");
+  peek.enterDownloadsPeek(second, "button");
+  t.mock.timers.tick(peek.PEEK_GRACE_MS);
+  assert.notEqual(shown(), first, "the first window's peek closes after the grace period");
+  peek.leaveDownloadsPeek(second, "button");
+  peek.dismissDownloadsPeek();
+});
+
 test("a quick pass over the button, a click, an open list or the setting off never peeks", (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const w = windowWithDownloads("a");

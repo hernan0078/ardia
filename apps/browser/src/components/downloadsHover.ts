@@ -24,11 +24,18 @@ export function canPeekDownloads(windowId: string) {
   return !!s.windows[windowId] && s.settings.peekRecentDownloads && !s.windowUi[windowId]?.downloadsOpen && downloadsIn(s, windowId).length > 0;
 }
 
+function hideAfterGrace(windowId: string) {
+  clearTimeout(hideTimer);
+  hideTimer = setTimeout(() => !pointerOn(windowId) && dismissDownloadsPeek(windowId), PEEK_GRACE_MS);
+}
+
 export function enterDownloadsPeek(windowId: string, spot: PeekSpot) {
   pointer = { windowId, spot };
   releaseDownloadsPeek();
-  clearTimeout(hideTimer);
-  if (useDownloadsPeek.getState().windowId === windowId || spot !== "button") return;
+  const shown = useDownloadsPeek.getState().windowId;
+  if (shown === windowId) return clearTimeout(hideTimer);
+  if (shown !== null) hideAfterGrace(shown);
+  if (spot !== "button") return;
   clearTimeout(showTimer);
   showTimer = setTimeout(() => {
     if (pointerOn(windowId, "button") && canPeekDownloads(windowId)) useDownloadsPeek.setState({ windowId });
@@ -39,9 +46,7 @@ export function leaveDownloadsPeek(windowId: string, spot: PeekSpot) {
   if (!pointerOn(windowId, spot)) return;
   pointer = null;
   clearTimeout(showTimer);
-  clearTimeout(hideTimer);
-  if (useDownloadsPeek.getState().windowId !== windowId) return;
-  hideTimer = setTimeout(() => !pointerOn(windowId) && dismissDownloadsPeek(windowId), PEEK_GRACE_MS);
+  if (useDownloadsPeek.getState().windowId === windowId) hideAfterGrace(windowId);
 }
 
 export function dismissDownloadsPeek(windowId?: string) {

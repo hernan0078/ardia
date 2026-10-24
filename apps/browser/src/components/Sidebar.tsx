@@ -70,9 +70,9 @@ export function Sidebar({ width }: { width: number }) {
   const addressBar = useAddressBarInSidebar();
   const header = addressBar ? SIDEBAR_HEADER_WITH_FIELD : layout.sidebarHeader;
   const glowRoom = addressBar ? 0 : GLOW_ROOM;
-  const hasDownloads = useBrowser((s) => s.settings.alwaysShowDownloadsButton || downloadsIn(s, windowId).length > 0);
+  const showDownloadsButton = useBrowser((s) => s.settings.alwaysShowDownloadsButton || downloadsIn(s, windowId).length > 0);
   const dots = useProfileDotsShown();
-  const footerDownloads = addressBar && hasDownloads;
+  const footerDownloads = addressBar && showDownloadsButton;
   const footer = dots || footerDownloads ? PROFILE_DOTS_HEIGHT : 0;
   const nothingPinned = useBrowser((s) => sidebarEntries(s, windowId, current).tiles.length === 0);
 
@@ -158,9 +158,9 @@ export function Sidebar({ width }: { width: number }) {
               </>
             ) : (
               <View pointerEvents="box-none" style={{ height: layout.sidebarHeader, flexDirection: "row", alignItems: "flex-start", paddingLeft: PROFILE_INDICATOR_X, paddingRight: 7, paddingTop: 27 - 17 }}>
-                <ProfileIndicator room={width - PROFILE_INDICATOR_X - 7 - (hasDownloads ? 34 + 2 : 0)} />
+                <ProfileIndicator room={width - PROFILE_INDICATOR_X - 7 - (showDownloadsButton ? 34 + 2 : 0)} />
                 <View pointerEvents="none" style={{ flex: 1 }} />
-                {hasDownloads ? <SidebarDownloadsButton windowId={windowId} /> : null}
+                {showDownloadsButton ? <SidebarDownloadsButton windowId={windowId} /> : null}
               </View>
             )}
           </View>
