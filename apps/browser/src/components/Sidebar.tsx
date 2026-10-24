@@ -12,6 +12,7 @@ import { cleanedTabsFor, cleanUpCandidates } from "../store/organize";
 import { openNewTabInSplit } from "./layout/splitActions";
 import { listTopGap, SIDEBAR_FIELD, SIDEBAR_FOOTER_DOWNLOADS, SIDEBAR_HEADER_WITH_FIELD, useAddressBarInSidebar } from "./layout/windowLayout";
 import { SIDEBAR_PLAYER_HEIGHT, SidebarPlayer, useSidebarPlayerTab } from "./media/SidebarPlayer";
+import { DownloadsLibrary } from "./DownloadsLibrary";
 import { SidebarDownloadsButton } from "./DownloadsPeek";
 import { HoverSlot } from "./HoverSlot";
 import { IconButton, useHover } from "./primitives";
@@ -165,6 +166,7 @@ export function Sidebar({ width }: { width: number }) {
             )}
           </View>
 
+          <DownloadsLibrary windowId={windowId} />
           <ResizeHandle windowId={windowId} />
           {ghost && !ghost.landing && nothingPinned ? (
             addressBar ? (

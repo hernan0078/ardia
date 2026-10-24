@@ -46,6 +46,7 @@ export type Settings = {
   videoUpscaling: boolean;
   sidebarMediaControls: boolean;
   peekRecentDownloads: boolean;
+  downloadsInSidebar: boolean;
   alwaysShowDownloadsButton: boolean;
   sidebarWidth: number;
   showSidebarButton: boolean;
@@ -102,6 +103,7 @@ export const DEFAULT_SETTINGS: Settings = {
   videoUpscaling: true,
   sidebarMediaControls: true,
   peekRecentDownloads: true,
+  downloadsInSidebar: false,
   alwaysShowDownloadsButton: false,
   sidebarWidth: 190,
   showSidebarButton: true,

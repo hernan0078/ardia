@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 const { useBrowser } = await import("../store/browser.ts");
-const { downloadsProgress, recentDownloadsIn, stampDownload, timeAgo } = await import("../store/ui.ts");
+const { downloadDay, downloadGroups, downloadKind, downloadSource, downloadsProgress, downloadsShownInSidebar, downloadSubtitle, recentDownloadsIn, stampDownload, timeAgo } = await import("../store/ui.ts");
 const peek = await import("./downloadsHover.ts");
 
 const S = () => useBrowser.getState();
@@ -181,4 +181,51 @@ test("a download that finishes puts its thumbnail on the button until the button
   assert.equal(peek.useFreshDownload.getState().id, null);
   peek.leaveDownloadsPeek("w", "button");
   peek.dismissDownloadsPeek();
+});
+
+test("the sidebar library groups by day like Arc and labels each file by kind and site", () => {
+  const now = new Date(2026, 9, 24, 9, 30).getTime();
+  const day = (n, hour = 12) => new Date(2026, 9, 24 - n, hour).getTime();
+  assert.equal(downloadDay(day(0, 1), now), "Today");
+  assert.equal(downloadDay(day(1, 23), now), "Yesterday");
+  assert.equal(downloadDay(day(3), now), "3 days ago");
+  assert.equal(downloadDay(undefined, now), "Earlier");
+
+  assert.equal(downloadKind({ mimeType: "image/jpeg", filename: "a.jpg" }), "Image");
+  assert.equal(downloadKind({ mimeType: "", filename: "plan.PDF" }), "PDF");
+  assert.equal(downloadKind({ mimeType: "application/zip", filename: "bipbop.zip" }), "Zip Archive");
+  assert.equal(downloadKind({ mimeType: "application/vnd.openxmlformats", filename: "quiz.docx" }), "Download");
+  assert.equal(downloadSource("https://upload.wikimedia.org/x.jpg"), "wikimedia.org");
+  assert.equal(downloadSource("https://www.fpl.com/bill.pdf"), "fpl.com");
+  assert.equal(downloadSource("https://release-assets.githubusercontent.com/a.zip"), "release-assets.githubusercontent.com");
+  assert.equal(downloadSource("blob:https://chatgpt.com/123"), "");
+  assert.equal(downloadSubtitle({ mimeType: "image/jpeg", filename: "a.jpg", url: "https://upload.wikimedia.org/a.jpg" }), "Image from wikimedia.org");
+  assert.equal(downloadSubtitle({ mimeType: "application/pdf", filename: "a.pdf", url: "data:application/pdf;base64,AA" }), "PDF");
+
+  const list = [
+    { ...download("photo.jpg", { url: "https://upload.wikimedia.org/photo.jpg" }), finishedAt: day(0) },
+    { ...download("quiz.docx", { url: "https://chatgpt.com/f" }), finishedAt: day(2) },
+    { ...download("old.zip") },
+  ];
+  assert.deepEqual(downloadGroups(list, "", now), [
+    { day: "Today", ids: ["photo.jpg"] },
+    { day: "2 days ago", ids: ["quiz.docx"] },
+    { day: "Earlier", ids: ["old.zip"] },
+  ]);
+  assert.deepEqual(downloadGroups(list, "  QUIZ ", now), [{ day: "2 days ago", ids: ["quiz.docx"] }], "search matches names");
+  assert.deepEqual(downloadGroups(list, "wikimedia", now), [{ day: "Today", ids: ["photo.jpg"] }], "and sites");
+});
+
+test("with downloads in the sidebar, the button opens the library and a new download doesn't open anything", () => {
+  const w = windowWithDownloads();
+  assert.equal(downloadsShownInSidebar(S(), w), false, "off by default: the popover, as in Dia");
+  S().updateSettings({ downloadsInSidebar: true });
+  assert.equal(downloadsShownInSidebar(S(), w), true);
+  S().upsertDownload(download("fresh", { state: "downloading" }));
+  assert.equal(S().windowUi[w]?.downloadsOpen ?? false, false, "no full-height view pops up on its own");
+  S().updateSettings({ tabLayout: "top" });
+  assert.equal(downloadsShownInSidebar(S(), w), false, "tabs on top keep the popover");
+  S().updateSettings({ tabLayout: "sidebar", downloadsInSidebar: false });
+  S().upsertDownload(download("another", { state: "downloading" }));
+  assert.equal(S().windowUi[w].downloadsOpen, true, "the popover still opens on a new download, as before");
 });

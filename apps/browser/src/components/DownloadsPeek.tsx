@@ -177,7 +177,7 @@ function PeekPanel({ windowId, closing, held, onClosed }: { windowId: string; cl
       </View>
       <View style={{ gap: PEEK_GAP, paddingVertical: 4 }}>
         {ids.map((id) => (
-          <DownloadRowItem key={id} id={id} windowId={windowId} peekAt={now} {...press} />
+          <DownloadRowItem key={id} id={id} windowId={windowId} variant="peek" now={now} {...press} />
         ))}
       </View>
     </Animated.View>

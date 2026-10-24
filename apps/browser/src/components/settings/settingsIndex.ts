@@ -102,6 +102,11 @@ const ROWS: Record<SettingsPane, Section[]> = {
           description: "Hovering the sidebar's Downloads button shows your last 3 downloads. Drag one onto a page, Finder or another app.",
           keywords: ["downloads", "files", "drag", "hover"],
         },
+        downloadsInSidebar: {
+          title: "Open downloads in the sidebar",
+          description: "The Downloads button and ⇧⌘J show your downloads full height in the sidebar, grouped by day, as in Arc.",
+          keywords: ["downloads", "library", "arc", "files", "full height"],
+        },
         alwaysShowDownloadsButton: { title: "Always show Downloads button", description: "Keeps it in the sidebar before your first download, and after you clear the list.", keywords: ["downloads", "files"] },
       },
     },

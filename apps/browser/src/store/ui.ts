@@ -63,6 +63,59 @@ export function stampDownload(prev: StoredDownload | undefined, d: Download, now
   return { ...d, ...(startedAt !== undefined ? { startedAt } : {}), ...(finishedAt !== undefined ? { finishedAt } : {}) };
 }
 
+export function downloadsShownInSidebar(s: Pick<BrowserState, "settings" | "windows">, windowId: string): boolean {
+  const w = s.windows[windowId];
+  return !!w && s.settings.downloadsInSidebar && w.kind !== "small" && w.sidebarOpen && (w.tabLayout ?? s.settings.tabLayout) !== "top";
+}
+
+const DAY_MS = 86_400_000;
+const startOfDay = (at: number) => new Date(at).setHours(0, 0, 0, 0);
+
+export function downloadDay(at: number | undefined, now: number): string {
+  if (at === undefined) return "Earlier";
+  const days = Math.round((startOfDay(now) - startOfDay(at)) / DAY_MS);
+  return days <= 0 ? "Today" : days === 1 ? "Yesterday" : `${days} days ago`;
+}
+
+const KINDS: [RegExp, string][] = [
+  [/^image\/|\.(png|jpe?g|gif|webp|heic|avif|svg|bmp|tiff?)$/i, "Image"],
+  [/^application\/pdf$|\.pdf$/i, "PDF"],
+  [/zip|\.zip$/i, "Zip Archive"],
+  [/^video\/|\.(mp4|mov|m4v|webm|mkv)$/i, "Video"],
+  [/^audio\/|\.(mp3|m4a|wav|aac|flac)$/i, "Audio"],
+];
+
+export function downloadKind(d: Pick<Download, "mimeType" | "filename">): string {
+  return KINDS.find(([pattern]) => pattern.test(d.mimeType) || pattern.test(d.filename))?.[1] ?? "Download";
+}
+
+const GENERIC_HOST_PARTS = new Set(["www", "upload", "cdn", "static", "files", "download", "downloads", "dl", "media", "images", "img"]);
+
+export function downloadSource(url: string): string {
+  const host = /^https?:\/\/([^/:?#]+)/i.exec(url)?.[1]?.toLowerCase() ?? "";
+  const parts = host.split(".");
+  while (parts.length > 2 && GENERIC_HOST_PARTS.has(parts[0]!)) parts.shift();
+  return parts.join(".");
+}
+
+export function downloadSubtitle(d: Pick<Download, "mimeType" | "filename" | "url">): string {
+  const source = downloadSource(d.url);
+  return source ? `${downloadKind(d)} from ${source}` : downloadKind(d);
+}
+
+export function downloadGroups(downloads: readonly StoredDownload[], query: string, now: number): { day: string; ids: string[] }[] {
+  const needle = query.trim().toLowerCase();
+  const groups: { day: string; ids: string[] }[] = [];
+  for (const d of downloads) {
+    if (needle && !d.filename.toLowerCase().includes(needle) && !downloadSource(d.url).includes(needle)) continue;
+    const day = downloadDay(d.finishedAt ?? d.startedAt, now);
+    const group = groups.find((g) => g.day === day);
+    if (group) group.ids.push(d.id);
+    else groups.push({ day, ids: [d.id] });
+  }
+  return groups;
+}
+
 export function timeAgo(at: number, now: number): string {
   const seconds = Math.max(1, Math.floor((now - at) / 1000));
   const unit = (n: number, name: string) => `${n} ${name}${n === 1 ? "" : "s"} ago`;
@@ -141,7 +194,7 @@ export const createUiSlice: StateCreator<BrowserState, [], [], UiSlice> = (set, 
       const stamped = stampDownload(s.downloads.find((x) => x.id === d.id), d, Date.now());
       const downloads = exists ? s.downloads.map((x) => (x.id === d.id ? stamped : x)) : [stamped, ...s.downloads].slice(0, MAX_DOWNLOADS);
       const focused = s.ui.focusedWindowId;
-      const open = !exists && focused && downloadVisibleIn(d, s.windows[focused]);
+      const open = !exists && focused && downloadVisibleIn(d, s.windows[focused]) && !downloadsShownInSidebar(s, focused);
       return { downloads, ...(open ? patchWindowUi(s, focused, { downloadsOpen: true }) : {}) };
     });
   },

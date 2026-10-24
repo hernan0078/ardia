@@ -35,6 +35,7 @@ export function TabsPane() {
         {!top && toggle("showSidebarButton", "tabs.showSidebarButton")}
         {!top && toggle("peekRecentDownloads", "tabs.peekRecentDownloads")}
         {!top && toggle("alwaysShowDownloadsButton", "tabs.alwaysShowDownloadsButton")}
+        {!top && toggle("downloadsInSidebar", "tabs.downloadsInSidebar")}
       </Group>
 
       <SectionHeader title="General" />

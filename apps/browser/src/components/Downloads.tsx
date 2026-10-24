@@ -6,7 +6,7 @@ import { hex, layout, useTheme } from "../lib/theme";
 import { useShallow } from "zustand/react/shallow";
 import { useBrowser } from "../store/browser";
 import { useSidebarOpen, useWindowId, useWindowUi } from "../store/hooks";
-import { downloadsIn, downloadVisibleIn, timeAgo, type StoredDownload } from "../store/ui";
+import { downloadsIn, downloadsShownInSidebar, downloadSubtitle, downloadVisibleIn, timeAgo, type StoredDownload } from "../store/ui";
 import { SIDEBAR_FOOTER_DOWNLOADS, useAddressBarInSidebar, useTabLayout } from "./layout/windowLayout";
 import { PROFILE_DOTS_HEIGHT } from "./profiles/ProfileDots";
 import { openInternalPage } from "./pages/urls";
@@ -166,7 +166,8 @@ export const progressTrack = (dark: boolean) => (dark ? "#717782" : "#CED7E7");
 
 export function DownloadsPopover() {
   const windowId = useWindowId();
-  const { shown, closing, onClosed } = usePopoverPresence(useWindowUi().downloadsOpen);
+  const inSidebar = useBrowser((s) => downloadsShownInSidebar(s, windowId));
+  const { shown, closing, onClosed } = usePopoverPresence(useWindowUi().downloadsOpen && !inSidebar);
   return shown ? <DownloadsPanel windowId={windowId} closing={closing} onClosed={onClosed} /> : null;
 }
 
@@ -323,10 +324,14 @@ function RowButton({ icon, onPress, tooltip }: { icon: string; onPress: () => vo
   return <IconButton icon={icon} size={PANEL.iconSize} box={ROW_BUTTON} radius={6} onPress={onPress} tooltip={tooltip} />;
 }
 
-type RowPress = { onHold?: () => void; onRelease?: () => void; onOpened?: () => void; peekAt?: number };
+type RowVariant = "list" | "peek" | "library";
+type RowPress = { onHold?: () => void; onRelease?: () => void; onOpened?: () => void; variant?: RowVariant; now?: number };
 
-const PEEK_THUMBNAIL = 40;
-const PEEK_ROW = 48;
+const ROW_LOOK: Record<RowVariant, { height: number; thumbnail: number; radius: number; gap: number; padding: number; title: number; titleLine: number; subtitle: number; subtitleLine: number }> = {
+  list: { height: ROW, thumbnail: FILE_ICON, radius: 4, gap: PANEL.iconGap, padding: PANEL.rowPadding, title: PANEL.titleSize, titleLine: PANEL.titleLine, subtitle: PANEL.subtitleSize, subtitleLine: PANEL.subtitleLine },
+  peek: { height: 48, thumbnail: 40, radius: 8, gap: 12, padding: 8, title: 13, titleLine: 17, subtitle: 12, subtitleLine: 16 },
+  library: { height: 44, thumbnail: 32, radius: 6, gap: 10, padding: 8, title: 13, titleLine: 17, subtitle: 12, subtitleLine: 16 },
+};
 
 export const DownloadRowItem = memo(function DownloadRowItem({ id, windowId, ...press }: { id: string; windowId: string } & RowPress) {
   const live = useBrowser((s) => s.downloads.find((x) => x.id === id));
@@ -335,8 +340,8 @@ export const DownloadRowItem = memo(function DownloadRowItem({ id, windowId, ...
   return last.current ? <DownloadRow d={last.current} windowId={windowId} {...press} /> : null;
 });
 
-function DownloadRow({ d, windowId, onHold, onRelease, onOpened, peekAt }: { d: StoredDownload; windowId: string } & RowPress) {
-  const peek = peekAt !== undefined;
+function DownloadRow({ d, windowId, onHold, onRelease, onOpened, variant = "list", now = 0 }: { d: StoredDownload; windowId: string } & RowPress) {
+  const look = ROW_LOOK[variant];
   const at = d.finishedAt ?? d.startedAt;
   const theme = useTheme();
   const { hovered, hoverProps } = useHover();
@@ -375,26 +380,26 @@ function DownloadRow({ d, windowId, onHold, onRelease, onOpened, peekAt }: { d: 
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
-                  gap: peek ? 12 : PANEL.iconGap,
-                  paddingHorizontal: peek ? 8 : PANEL.rowPadding,
-                  height: peek ? PEEK_ROW : ROW,
+                  gap: look.gap,
+                  paddingHorizontal: look.padding,
+                  height: look.height,
                   borderRadius: PANEL.rowRadius,
                   backgroundColor: rowFill(theme.dark, hovered, pressed && done),
                 }}
               >
                 <View style={{ opacity: exists ? 1 : 0.45 }}>
                   {done ? (
-                    <FileThumbnail path={d.path} size={peek ? PEEK_THUMBNAIL : FILE_ICON} radius={peek ? 8 : 4} />
+                    <FileThumbnail path={d.path} size={look.thumbnail} radius={look.radius} />
                   ) : (
-                    <FileIcon path={d.path || d.filename} size={peek ? PEEK_THUMBNAIL : FILE_ICON} />
+                    <FileIcon path={d.path || d.filename} size={look.thumbnail} />
                   )}
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text
                     numberOfLines={1}
                     style={{
-                      fontSize: peek ? 13 : PANEL.titleSize,
-                      lineHeight: peek ? 17 : PANEL.titleLine,
+                      fontSize: look.title,
+                      lineHeight: look.titleLine,
                       color: exists ? theme.textPrimary : theme.textSecondary,
                       textDecorationLine: exists ? "none" : "line-through",
                     }}
@@ -408,8 +413,8 @@ function DownloadRow({ d, windowId, onHold, onRelease, onOpened, peekAt }: { d: 
                       />
                     </View>
                   ) : null}
-                  <Text numberOfLines={1} style={{ fontSize: peek ? 12 : PANEL.subtitleSize, lineHeight: peek ? 16 : PANEL.subtitleLine, color: theme.textSecondary }}>
-                    {peek && done && at !== undefined ? timeAgo(at, peekAt) : downloadStatus(d, exists)}
+                  <Text numberOfLines={1} style={{ fontSize: look.subtitle, lineHeight: look.subtitleLine, color: theme.textSecondary }}>
+                    {variant === "peek" && done && at !== undefined ? timeAgo(at, now) : variant === "library" && done ? downloadSubtitle(d) : downloadStatus(d, exists)}
                   </Text>
                 </View>
                 {d.state === "downloading" ? (
@@ -421,7 +426,7 @@ function DownloadRow({ d, windowId, onHold, onRelease, onOpened, peekAt }: { d: 
                     />
                     <RowButton icon="xmark.circle.fill" onPress={() => void cancelDownload(d.id)} tooltip="Cancel" />
                   </View>
-                ) : done && !peek ? (
+                ) : done && variant !== "peek" ? (
                   <HoverSlot
                     hovered={hovered}
                     width={ROW_BUTTON}
