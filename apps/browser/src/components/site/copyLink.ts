@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useBrowser } from "../../store/browser";
 import { copyPageUrl } from "./selection";
 
 const COPIED_MS = 1400;
@@ -8,7 +9,7 @@ export function useCopyLink(tabId: string | undefined) {
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
   const copy = () => {
-    if (!tabId) return;
+    if (!tabId || !useBrowser.getState().tabs[tabId]?.url) return;
     void copyPageUrl(tabId);
     setCopiedTabId(tabId);
     clearTimeout(timer.current);

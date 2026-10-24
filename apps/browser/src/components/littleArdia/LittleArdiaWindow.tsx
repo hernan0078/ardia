@@ -48,7 +48,7 @@ function LittleArdiaBar() {
   const windowId = useWindowId();
   const tab = useActiveTab();
   const panelOpen = useWindowUi().panel.open;
-  const { copied, copy } = useCopyLink(tab?.url ? tab.id : undefined);
+  const { copied, copy } = useCopyLink(tab?.id);
   useEffect(() => {
     void setTrafficLightsCenter(windowId, LIGHTS_CENTER);
   }, [windowId]);
