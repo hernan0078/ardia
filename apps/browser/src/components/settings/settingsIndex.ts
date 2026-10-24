@@ -100,7 +100,7 @@ const ROWS: Record<SettingsPane, Section[]> = {
         arcSidebarText: {
           title: "Arc-style sidebar text",
           description: "Spaces the sidebar's rows like Arc and makes their titles a size larger and brighter.",
-          keywords: ["arc", "font size", "text size", "bigger text", "row height", "spacing", "contrast", "readability"],
+          keywords: ["arc", "font size", "text size", "bigger text", "row height", "spacing", "contrast", "readability", "color", "colour"],
         },
       },
     },

@@ -28,14 +28,14 @@ test("on: Arc's 41 pt row pitch and 14 pt titles, read from the store", () => {
   assert.equal(rowMetrics(useBrowser.getState()), ARDIA_ROWS);
 });
 
-test("Arc's titles are brighter than Ardia's in both themes, and the New Tab label stays dimmer than a title", () => {
+test("Arc's tab titles are brighter than Ardia's in both themes, folder headers keep theirs, and the New Tab label stays dimmer than a title", () => {
   for (const mode of ["dark", "light"]) {
     const theme = themeFor(`plum:${mode}`);
     const text = ARC_TEXT[mode];
     assert.equal(text.tabTitle.slice(0, 7), theme.textTab.slice(0, 7));
     assert.ok(alpha(text.tabTitle) > alpha(theme.textTab), mode);
     assert.ok(Math.abs(alpha(text.tabTitle) - 0.83) < 0.005, mode);
-    assert.equal(text.groupTitle, text.tabTitle);
+    assert.equal("groupTitle" in text, false, "folder headers keep Ardia's colour, which is already at least as bright as Arc's 0.83");
     assert.ok(alpha(text.newTabLabel) < alpha(text.tabTitle), mode);
   }
 });

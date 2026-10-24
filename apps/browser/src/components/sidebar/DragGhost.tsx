@@ -14,6 +14,7 @@ export function DragGhost({ ghost }: { ghost: Ghost }) {
   const theme = useTheme();
   const tokens = useSidebarTokens();
   const rows = useSidebarRowMetrics();
+  const arc = useBrowser((s) => !!s.settings.arcSidebarText);
   const { item, count, width, height, position } = ghost;
   const tab = useBrowser((s) => s.tabs[item.tabIds[0] ?? ""]);
   const label = useBrowser((s) => (item.groupId && s.groups[item.groupId] ? groupLabel(s, s.groups[item.groupId]!) : tab ? tabTitle(tab) : ""));
@@ -42,7 +43,7 @@ export function DragGhost({ ghost }: { ghost: Ghost }) {
         }}
       >
         {tab ? <TabIcon url={tab.url} favicon={tab.favicon} icon={item.kind === "group" ? null : tab.customIcon} profileId={tab.profileId} /> : null}
-        {!tile ? <FadeLabel text={label} fontSize={rows.titleSize} weight={item.kind === "group" ? "medium" : "regular"} color={theme.textPrimary} style={{ flex: 1, height: rows.titleHeight, marginLeft: 7 }} /> : null}
+        {!tile ? <FadeLabel text={label} fontSize={rows.titleSize} weight={item.kind === "group" ? "medium" : "regular"} color={arc ? (item.kind === "group" ? rows.groupTitle : rows.tabTitle) : theme.textPrimary} style={{ flex: 1, height: rows.titleHeight, marginLeft: 7 }} /> : null}
       </Surface>
       {count > 1 ? (
         <View style={{ position: "absolute", top: -6, right: -4, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 5, backgroundColor: theme.accent, alignItems: "center", justifyContent: "center" }}>
