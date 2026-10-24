@@ -1,12 +1,12 @@
 import { cancelDownload, pauseDownload, resumeDownload, type Download } from "@ardia/ardiacore";
-import { ContextMenuArea, copyText, fileExists, fileIcon, MouseArea, moveToTrash, openFile, revealFile, showMenu, Surface, Symbol, VisualEffect, type MenuItem } from "@ardia/shell";
+import { ContextMenuArea, copyText, fileExists, fileIcon, fileThumbnail, MouseArea, moveToTrash, openFile, revealFile, showMenu, Surface, Symbol, VisualEffect, type MenuItem } from "@ardia/shell";
 import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import { Animated, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { hex, layout, useTheme } from "../lib/theme";
 import { useShallow } from "zustand/react/shallow";
 import { useBrowser } from "../store/browser";
 import { useSidebarOpen, useWindowId, useWindowUi } from "../store/hooks";
-import { downloadsIn, downloadVisibleIn } from "../store/ui";
+import { downloadsIn, downloadVisibleIn, timeAgo, type StoredDownload } from "../store/ui";
 import { SIDEBAR_FOOTER_DOWNLOADS, useAddressBarInSidebar, useTabLayout } from "./layout/windowLayout";
 import { PROFILE_DOTS_HEIGHT } from "./profiles/ProfileDots";
 import { openInternalPage } from "./pages/urls";
@@ -116,6 +116,31 @@ export const FileIcon = memo(function FileIcon({ path, size = 28 }: { path: stri
     <Image source={{ uri }} style={{ width: size, height: size }} />
   ) : (
     <Symbol name="doc" size={size * 0.62} color={theme.icon} style={{ width: size, height: size }} />
+  );
+});
+
+const thumbnailCache = new Map<string, { uri: string; icon: boolean } | null>();
+export const FileThumbnail = memo(function FileThumbnail({ path, size, radius }: { path: string; size: number; radius: number }) {
+  const key = `${path}@${size}`;
+  const [thumbnail, setThumbnail] = useState(() => thumbnailCache.get(key));
+  useEffect(() => {
+    if (thumbnailCache.has(key)) return setThumbnail(thumbnailCache.get(key));
+    let live = true;
+    void fileThumbnail(path, size).then((t) => {
+      thumbnailCache.set(key, t);
+      if (live) setThumbnail(t);
+    });
+    return () => {
+      live = false;
+    };
+  }, [key]);
+  if (!thumbnail) return <FileIcon path={path} size={size} />;
+  return (
+    <Image
+      source={{ uri: thumbnail.uri }}
+      resizeMode={thumbnail.icon ? "contain" : "cover"}
+      style={{ width: size, height: size, borderRadius: thumbnail.icon ? 0 : radius, overflow: "hidden" }}
+    />
   );
 });
 
@@ -298,7 +323,10 @@ function RowButton({ icon, onPress, tooltip }: { icon: string; onPress: () => vo
   return <IconButton icon={icon} size={PANEL.iconSize} box={ROW_BUTTON} radius={6} onPress={onPress} tooltip={tooltip} />;
 }
 
-type RowPress = { onHold?: () => void; onRelease?: () => void; onOpened?: () => void };
+type RowPress = { onHold?: () => void; onRelease?: () => void; onOpened?: () => void; peekAt?: number };
+
+const PEEK_THUMBNAIL = 40;
+const PEEK_ROW = 48;
 
 export const DownloadRowItem = memo(function DownloadRowItem({ id, windowId, ...press }: { id: string; windowId: string } & RowPress) {
   const live = useBrowser((s) => s.downloads.find((x) => x.id === id));
@@ -307,7 +335,9 @@ export const DownloadRowItem = memo(function DownloadRowItem({ id, windowId, ...
   return last.current ? <DownloadRow d={last.current} windowId={windowId} {...press} /> : null;
 });
 
-function DownloadRow({ d, windowId, onHold, onRelease, onOpened }: { d: Download; windowId: string } & RowPress) {
+function DownloadRow({ d, windowId, onHold, onRelease, onOpened, peekAt }: { d: StoredDownload; windowId: string } & RowPress) {
+  const peek = peekAt !== undefined;
+  const at = d.finishedAt ?? d.startedAt;
   const theme = useTheme();
   const { hovered, hoverProps } = useHover();
   const exists = d.state !== "finished" || fileExists(d.path);
@@ -345,22 +375,26 @@ function DownloadRow({ d, windowId, onHold, onRelease, onOpened }: { d: Download
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
-                  gap: PANEL.iconGap,
-                  paddingHorizontal: PANEL.rowPadding,
-                  height: ROW,
+                  gap: peek ? 12 : PANEL.iconGap,
+                  paddingHorizontal: peek ? 8 : PANEL.rowPadding,
+                  height: peek ? PEEK_ROW : ROW,
                   borderRadius: PANEL.rowRadius,
                   backgroundColor: rowFill(theme.dark, hovered, pressed && done),
                 }}
               >
                 <View style={{ opacity: exists ? 1 : 0.45 }}>
-                  <FileIcon path={d.path || d.filename} size={FILE_ICON} />
+                  {done ? (
+                    <FileThumbnail path={d.path} size={peek ? PEEK_THUMBNAIL : FILE_ICON} radius={peek ? 8 : 4} />
+                  ) : (
+                    <FileIcon path={d.path || d.filename} size={peek ? PEEK_THUMBNAIL : FILE_ICON} />
+                  )}
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text
                     numberOfLines={1}
                     style={{
-                      fontSize: PANEL.titleSize,
-                      lineHeight: PANEL.titleLine,
+                      fontSize: peek ? 13 : PANEL.titleSize,
+                      lineHeight: peek ? 17 : PANEL.titleLine,
                       color: exists ? theme.textPrimary : theme.textSecondary,
                       textDecorationLine: exists ? "none" : "line-through",
                     }}
@@ -374,8 +408,8 @@ function DownloadRow({ d, windowId, onHold, onRelease, onOpened }: { d: Download
                       />
                     </View>
                   ) : null}
-                  <Text numberOfLines={1} style={{ fontSize: PANEL.subtitleSize, lineHeight: PANEL.subtitleLine, color: theme.textSecondary }}>
-                    {downloadStatus(d, exists)}
+                  <Text numberOfLines={1} style={{ fontSize: peek ? 12 : PANEL.subtitleSize, lineHeight: peek ? 16 : PANEL.subtitleLine, color: theme.textSecondary }}>
+                    {peek && done && at !== undefined ? timeAgo(at, peekAt) : downloadStatus(d, exists)}
                   </Text>
                 </View>
                 {d.state === "downloading" ? (
@@ -387,7 +421,7 @@ function DownloadRow({ d, windowId, onHold, onRelease, onOpened }: { d: Download
                     />
                     <RowButton icon="xmark.circle.fill" onPress={() => void cancelDownload(d.id)} tooltip="Cancel" />
                   </View>
-                ) : done ? (
+                ) : done && !peek ? (
                   <HoverSlot
                     hovered={hovered}
                     width={ROW_BUTTON}

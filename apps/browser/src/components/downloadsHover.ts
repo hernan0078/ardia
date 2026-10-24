@@ -1,3 +1,4 @@
+import type { Download } from "@ardia/ardiacore";
 import { create } from "zustand";
 import { useBrowser } from "../store/browser";
 import { downloadsIn } from "../store/ui";
@@ -29,8 +30,26 @@ function hideAfterGrace(windowId: string) {
   hideTimer = setTimeout(() => !pointerOn(windowId) && dismissDownloadsPeek(windowId), PEEK_GRACE_MS);
 }
 
+export const useFreshDownload = create<{ id: string | null }>()(() => ({ id: null }));
+
+export function noteFinishedDownloads(before: readonly Download[], after: readonly Download[]) {
+  if (before === after) return;
+  const was = new Map(before.map((d) => [d.id, d.state]));
+  const finished = after.find((d) => d.state === "finished" && was.get(d.id) === "downloading");
+  if (finished) useFreshDownload.setState({ id: finished.id });
+}
+
+export function clearFreshDownload() {
+  if (useFreshDownload.getState().id !== null) useFreshDownload.setState({ id: null });
+}
+
+const watch = globalThis as { __acFreshDownloadWatch?: () => void };
+watch.__acFreshDownloadWatch?.();
+watch.__acFreshDownloadWatch = useBrowser.subscribe((s, prev) => noteFinishedDownloads(prev.downloads, s.downloads));
+
 export function enterDownloadsPeek(windowId: string, spot: PeekSpot) {
   pointer = { windowId, spot };
+  if (spot === "button") clearFreshDownload();
   releaseDownloadsPeek();
   const shown = useDownloadsPeek.getState().windowId;
   if (shown === windowId) return clearTimeout(hideTimer);

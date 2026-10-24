@@ -6,6 +6,8 @@ import { originalProfile } from "./small";
 import type { FindState, NewTabTarget, WindowUi } from "./types";
 import { commandBarFocus, expectFocus } from "../lib/focusClaims";
 
+export type StoredDownload = Download & { startedAt?: number; finishedAt?: number };
+
 export type UiSlice = {
   ui: {
     focusedWindowId: string | null;
@@ -15,7 +17,7 @@ export type UiSlice = {
   };
   windowUi: Record<string, WindowUi>;
   find: Record<string, FindState>;
-  downloads: Download[];
+  downloads: StoredDownload[];
 
   setFocusedWindow(id: string): void;
   setAppDark(dark: boolean): void;
@@ -54,6 +56,21 @@ export const recentDownloadsIn = (s: Pick<BrowserState, "downloads" | "windows">
   downloadsIn(s, windowId).slice(0, count);
 
 export type DownloadsProgress = { fraction: number; paused: boolean };
+
+export function stampDownload(prev: StoredDownload | undefined, d: Download, now: number): StoredDownload {
+  const startedAt = prev ? prev.startedAt : d.state === "downloading" ? now : undefined;
+  const finishedAt = d.state !== "finished" ? undefined : (prev?.finishedAt ?? (prev?.state === "downloading" ? now : undefined));
+  return { ...d, ...(startedAt !== undefined ? { startedAt } : {}), ...(finishedAt !== undefined ? { finishedAt } : {}) };
+}
+
+export function timeAgo(at: number, now: number): string {
+  const seconds = Math.max(1, Math.floor((now - at) / 1000));
+  const unit = (n: number, name: string) => `${n} ${name}${n === 1 ? "" : "s"} ago`;
+  if (seconds < 60) return unit(seconds, "second");
+  if (seconds < 3600) return unit(Math.floor(seconds / 60), "minute");
+  if (seconds < 86400) return unit(Math.floor(seconds / 3600), "hour");
+  return unit(Math.floor(seconds / 86400), "day");
+}
 
 export function downloadsProgress(downloads: readonly Download[]): DownloadsProgress | null {
   const active = downloads.filter((d) => d.state === "downloading");
@@ -121,7 +138,8 @@ export const createUiSlice: StateCreator<BrowserState, [], [], UiSlice> = (set, 
         endedPrivateDownloads.add(d.id);
         return {};
       }
-      const downloads = exists ? s.downloads.map((x) => (x.id === d.id ? d : x)) : [d, ...s.downloads].slice(0, MAX_DOWNLOADS);
+      const stamped = stampDownload(s.downloads.find((x) => x.id === d.id), d, Date.now());
+      const downloads = exists ? s.downloads.map((x) => (x.id === d.id ? stamped : x)) : [stamped, ...s.downloads].slice(0, MAX_DOWNLOADS);
       const focused = s.ui.focusedWindowId;
       const open = !exists && focused && downloadVisibleIn(d, s.windows[focused]);
       return { downloads, ...(open ? patchWindowUi(s, focused, { downloadsOpen: true }) : {}) };

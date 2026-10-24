@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 const { useBrowser } = await import("../store/browser.ts");
-const { downloadsProgress, recentDownloadsIn } = await import("../store/ui.ts");
+const { downloadsProgress, recentDownloadsIn, stampDownload, timeAgo } = await import("../store/ui.ts");
 const peek = await import("./downloadsHover.ts");
 
 const S = () => useBrowser.getState();
@@ -142,4 +142,43 @@ test("a press on a row holds the peek until it's released, the pointer comes bac
   t.mock.timers.tick(peek.PEEK_DRAG_HOLD_MS);
   assert.equal(held(), null);
   peek.leaveDownloadsPeek(w, "button");
+});
+
+test("downloads are stamped when they start and when they finish, never when first seen already finished", () => {
+  const live = download("x", { state: "downloading", received: 1 });
+  const started = stampDownload(undefined, live, 1000);
+  assert.equal(started.startedAt, 1000);
+  assert.equal(started.finishedAt, undefined);
+  const finished = stampDownload(started, download("x"), 5000);
+  assert.deepEqual([finished.startedAt, finished.finishedAt], [1000, 5000]);
+  assert.equal(stampDownload(finished, download("x"), 9000).finishedAt, 5000, "a later update keeps the finish time");
+  const restored = stampDownload(undefined, download("old"), 9000);
+  assert.deepEqual([restored.startedAt, restored.finishedAt], [undefined, undefined], "a download from before has no time to show");
+  S().hydrate({ profiles: { default: PERSONAL }, profileOrder: ["default"] });
+  S().upsertDownload(live);
+  S().upsertDownload(download("x"));
+  assert.ok(S().downloads[0].finishedAt >= S().downloads[0].startedAt, "the store stamps them");
+});
+
+test("time ago reads like Arc's", () => {
+  assert.equal(timeAgo(0, 400), "1 second ago");
+  assert.equal(timeAgo(0, 38_000), "38 seconds ago");
+  assert.equal(timeAgo(0, 61_000), "1 minute ago");
+  assert.equal(timeAgo(0, 3 * 60_000 + 5_000), "3 minutes ago");
+  assert.equal(timeAgo(0, 2 * 3_600_000), "2 hours ago");
+  assert.equal(timeAgo(0, 86_400_000), "1 day ago");
+});
+
+test("a download that finishes puts its thumbnail on the button until the button is hovered or clicked", () => {
+  peek.clearFreshDownload();
+  peek.noteFinishedDownloads([download("old")], [download("old")]);
+  assert.equal(peek.useFreshDownload.getState().id, null, "nothing new finished");
+  peek.noteFinishedDownloads([], [download("restored")]);
+  assert.equal(peek.useFreshDownload.getState().id, null, "first seen already finished: not fresh");
+  peek.noteFinishedDownloads([download("new", { state: "downloading" })], [download("new")]);
+  assert.equal(peek.useFreshDownload.getState().id, "new");
+  peek.enterDownloadsPeek("w", "button");
+  assert.equal(peek.useFreshDownload.getState().id, null);
+  peek.leaveDownloadsPeek("w", "button");
+  peek.dismissDownloadsPeek();
 });

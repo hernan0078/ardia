@@ -1,5 +1,6 @@
 import AppKit
 import ExpoModulesCore
+import QuickLookThumbnailing
 import UniformTypeIdentifiers
 import ServiceManagement
 
@@ -91,6 +92,18 @@ public class SystemModule: Module {
       guard let png = rep.representation(using: .png, properties: [:]) else { return nil }
       return "data:image/png;base64,\(png.base64EncodedString())"
     }.runOnQueue(.main)
+
+    AsyncFunction("fileThumbnail") { (path: String, size: Double, promise: Promise) in
+      let side = CGFloat(size)
+      let request = QLThumbnailGenerator.Request(
+        fileAt: URL(fileURLWithPath: path), size: CGSize(width: side * 2, height: side * 2), scale: 2, representationTypes: .all)
+      QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { thumbnail, _ in
+        guard let thumbnail, let png = NSBitmapImageRep(cgImage: thumbnail.cgImage).representation(using: .png, properties: [:]) else {
+          return promise.resolve(nil)
+        }
+        promise.resolve(["uri": "data:image/png;base64,\(png.base64EncodedString())", "icon": thumbnail.type == .icon])
+      }
+    }
 
     AsyncFunction("appIcon") { (pid: Int, size: Double) -> String? in
       guard let icon = NSRunningApplication(processIdentifier: pid_t(pid))?.icon else { return nil }

@@ -16,6 +16,8 @@ export type MenuShortcut = {
 
 export type ShortcutModifier = "control" | "option" | "shift" | "command" | "function";
 
+export type FileThumbnail = { uri: string; icon: boolean };
+
 type LaunchAtLoginStatus = "enabled" | "requiresApproval" | "notRegistered" | "notFound";
 
 const System = requireNativeModule<{
@@ -28,6 +30,7 @@ const System = requireNativeModule<{
   revealFile(path: string): Promise<boolean>;
   moveToTrash(path: string): Promise<boolean>;
   fileIcon(path: string, size: number): Promise<string | null>;
+  fileThumbnail(path: string, size: number): Promise<FileThumbnail | null>;
   appIcon(pid: number, size: number): Promise<string | null>;
   hapticTick(): void;
   menuShortcuts(): Promise<MenuShortcut[]>;
@@ -45,6 +48,7 @@ export const openFile = (path: string) => System.openFile(path);
 export const revealFile = (path: string) => System.revealFile(path);
 export const moveToTrash = (path: string) => System.moveToTrash(path);
 export const fileIcon = (path: string, size = 32) => System.fileIcon(path, size);
+export const fileThumbnail = (path: string, size = 32) => System.fileThumbnail(path, size);
 export const runningAppIcon = (pid: number, size = 32) => System.appIcon(pid, size);
 export const hapticTick = () => System.hapticTick();
 export const menuShortcuts = () => System.menuShortcuts();
