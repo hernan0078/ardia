@@ -1,5 +1,6 @@
 import type { StripGroup, StripState, StripTab } from "@ardia/ardiacore";
 import type { BrowserState } from "./browser";
+import { orderSections } from "./groups";
 import { engineProfile, pinnedFirst } from "./model";
 import { forgetOpeners, switchKeepsOpeners } from "./openers";
 import { groupOf, placing, withGroup } from "./organize";
@@ -248,7 +249,7 @@ function intoWindow(s: BrowserState, key: string, to: string): BrowserState {
     ...next,
     tabs,
     live: live ? { ...next.live, [key]: live } : next.live,
-    windows: { ...next.windows, [to]: { ...w, tabIds: pinnedFirst([...w.tabIds, key], tabs) } },
+    windows: { ...next.windows, [to]: { ...w, tabIds: orderSections(pinnedFirst([...w.tabIds, key], tabs), tabs, next.groups) } },
   };
   return settleMovedPins(s, next, [key], to);
 }

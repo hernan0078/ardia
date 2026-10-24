@@ -2,15 +2,17 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 const { useBrowser } = await import("./browser.ts");
 const { sidebarEntries, numberedTabs } = await import("../components/sidebar/entries.ts");
+const { chromeChanged } = await import("./liveTabs.ts");
 const { flushPersistence, loadSession, startPersistence } = await import("../lib/persist.ts");
 const stub = await import("../test-native-stub.mjs");
 
 const S = () => useBrowser.getState();
 const reset = () => S().hydrate({});
-const host = (id) => new URL(S().tabs[id].pinnedUrl || S().tabs[id].url).hostname.replace(".com", "");
+const host = (id) => new URL(S().tabs[id].pinnedUrl || S().tabs[id].url || "https://blank.com/").hostname.replace(".com", "");
 const pinned = (w) => sidebarEntries(S(), w).pinned.map((e) => (e.startsWith("g:") ? S().groups[e.slice(2)].name : host(e.slice(2))));
 const rowIn = (w, name) => sidebarEntries(S(), w).pinnedRows.find((id) => host(id) === name);
-const folderIn = (w, name) => Object.values(S().groups).find((g) => g.windowId === w && g.name === name).id;
+const folderIn = (w, name) => Object.values(S().groups).find((g) => g.windowId === w && g.name === name)?.id;
+const order = (w) => S().windows[w].tabIds.map(host);
 
 function windowWith(...hosts) {
   const w = S().createWindow({ url: `https://${hosts[0]}.com/` });
@@ -138,4 +140,122 @@ test("a folder's place among the rows survives a relaunch and parking with the l
   S().closeWindow(w);
   const n = S().createWindow();
   assert.deepEqual(pinned(n), ["a", "F", "b"]);
+});
+
+function placedFolder() {
+  const { w, ids, folder } = rowsAndFolder();
+  S().moveGroup(folder, { pinned: true, beforeId: ids[1] });
+  assert.deepEqual(pinned(w), ["a", "F", "b"]);
+  return { w, ids, folder };
+}
+
+function placedFolderAndG() {
+  reset();
+  const { w, ids } = windowWith("a", "b", "c", "d", "e", "f", "g", "h");
+  const [a, b, c, d, e, f] = ids;
+  S().pinTabs([a, b], true, true);
+  const folder = S().groupTabs([c, d], { pinned: true, name: "F" });
+  const other = S().groupTabs([e, f], { pinned: true, name: "G" });
+  S().moveGroup(folder, { pinned: true, beforeId: b });
+  assert.deepEqual(pinned(w), ["a", "F", "b", "G"]);
+  return { w, ids, folder, other };
+}
+
+test("newTabInGroup on an anchored folder, then a keyboard row move", () => {
+  const { w, ids: [a], folder } = placedFolder();
+  const n = S().newTabInGroup(folder);
+  const other = S().groupTabs([S().windows[w].tabIds.find((id) => host(id) === "e")], { pinned: true, name: "G" });
+  S().moveGroup(other, { pinned: true, beforeId: a });
+  S().newTab(w, { url: "https://z.com/" });
+  assert.deepEqual(pinned(w), ["G", "a", "F", "b"]);
+});
+
+test("newTabInGroup then moveTab of a row", () => {
+  const { w, ids: [a, b], folder } = placedFolder();
+  S().newTabInGroup(folder);
+  S().moveTab(a, 0);
+  S().newTab(w, { url: "https://z.com/" });
+  assert.deepEqual(pinned(w), ["a", "F", "b"]);
+});
+
+test("keyboard moveTabDown on the last folder member", () => {
+  const { w, ids: [, , c, d], folder } = placedFolder();
+  const section = S().windows[w].tabIds.filter((id) => !S().tabs[id].pinned);
+  S().moveTab(d, section.indexOf(d) + 1);
+  S().newTab(w, { url: "https://z.com/" });
+  assert.deepEqual(pinned(w), ["a", "F", "b"]);
+});
+
+test("keyboard moveTabUp on the first list tab", () => {
+  const { w, ids: [, , , , e], folder } = placedFolder();
+  const section = S().windows[w].tabIds.filter((id) => !S().tabs[id].pinned);
+  S().moveTab(e, section.indexOf(e) - 1);
+  S().newTab(w, { url: "https://z.com/" });
+  assert.deepEqual(pinned(w), ["a", "F", "b"]);
+});
+
+test("a tab moved in from Chrome (extension move into this window)", () => {
+  const { w, ids, folder } = placedFolder();
+  const other = S().createWindow({ url: "https://x.com/" });
+  const x = S().windows[other].tabIds.find((id) => host(id) === "x");
+  const keys = S().windows[w].tabIds;
+  const plan = [...keys.filter((id) => S().tabs[id].pinned), ...keys.filter((id) => !S().tabs[id].pinned)];
+  const strip = (list) => ({ strip: 1, window: 1, profile: "", tabs: list.map((key, index) => ({ key, browser: index + 1, index, active: index === 0, pinned: !!S().tabs[key].pinned, group: undefined })) });
+  const before = strip(plan);
+  const after = strip([...plan, x]);
+  const next = chromeChanged(S(), before, after, { seen: new Set() });
+  useBrowser.setState(next);
+  S().newTab(w, { url: "https://z.com/" });
+  assert.deepEqual(pinned(w), ["a", "F", "b"]);
+});
+
+test("newTabInGroup then moving another folder", () => {
+  const { w, ids: [a], folder, other } = placedFolderAndG();
+  S().newTabInGroup(folder);
+  S().moveGroup(other, { pinned: true, beforeId: a });
+  S().newTab(w, { url: "https://z.com/" });
+  assert.deepEqual(pinned(w), ["G", "a", "F", "b"]);
+});
+
+test("keyboard move in one window moves the folder in a second window", () => {
+  const { w, ids: [, , c, d, e, f, g], folder } = placedFolderAndG();
+  const w2 = S().createWindow({ url: "https://x.com/" });
+  assert.deepEqual(pinned(w2), ["a", "F", "b", "G"]);
+  const section = S().windows[w].tabIds.filter((id) => !S().tabs[id].pinned);
+  S().moveTab(d, section.indexOf(d) + 1);
+  assert.deepEqual(pinned(w2), ["a", "F", "b", "G"]);
+});
+
+test("merge all windows keeps the folder's place", () => {
+  const { w, folder } = placedFolderAndG();
+  const w2 = S().createWindow({ url: "https://x.com/" });
+  S().mergeAllWindows(w);
+  assert.deepEqual(pinned(w), ["a", "F", "b", "G"]);
+});
+
+test("merge into the second window", () => {
+  const { w, folder } = placedFolderAndG();
+  const w2 = S().createWindow({ url: "https://x.com/" });
+  S().mergeAllWindows(w2);
+  assert.deepEqual(pinned(w2), ["a", "F", "b", "G"]);
+});
+
+test("move a folder member to a new window", () => {
+  const { w, ids: [, , c], folder } = placedFolderAndG();
+  const n = S().moveTabsToWindow([c], null);
+  assert.deepEqual(pinned(w), ["a", "F", "b", "G"]);
+  assert.deepEqual(pinned(n), ["a", "F", "b", "G"]);
+});
+
+test("move the anchor row to another window", () => {
+  const { w, ids: [a, b], folder } = placedFolderAndG();
+  const n = S().moveTabsToWindow([b], null);
+  assert.deepEqual(pinned(w), ["a", "F", "b", "G"]);
+});
+
+test("close a placed folder and reopen it", () => {
+  const { w, folder } = placedFolderAndG();
+  S().closeGroup(folder);
+  S().reopenClosed(w);
+  assert.deepEqual(pinned(w), ["a", "F", "b", "G"]);
 });

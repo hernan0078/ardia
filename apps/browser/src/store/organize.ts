@@ -284,7 +284,7 @@ export function closingGroup(s: BrowserState, groupId: string, deleted = false):
   const entry: ClosedGroup = {
     kind: "group",
     id: newId("cg"),
-    group: { id: g.id, name: groupLabel(s, g), icon: g.icon, color: g.color, pinned: g.pinned },
+    group: { id: g.id, name: groupLabel(s, g), icon: g.icon, color: g.color, pinned: g.pinned, ...(g.pinned && g.beforeRow ? { beforeRow: g.beforeRow } : {}) },
     tabs: g.tabIds.map((id) => snapshotTab(s.tabs[id]!)),
     tabIds: g.tabIds.map((id) => pendingRestore(s.tabs[id]!) ?? id),
     windowId: w.id,
@@ -369,7 +369,10 @@ export function restoringGroup(s: BrowserState, entry: ClosedGroup, requested?: 
   const [grouped, groupId] = withGroup(next, ids, { name: entry.group.name, pinned: entry.group.pinned });
   next = grouped;
   if (groupId && next.groups[groupId]) {
-    next = { ...next, groups: { ...next.groups, [groupId]: { ...next.groups[groupId]!, icon: entry.group.icon, color: entry.group.color } } };
+    const groups = { ...next.groups, [groupId]: { ...next.groups[groupId]!, icon: entry.group.icon, color: entry.group.color, ...(entry.group.beforeRow ? { beforeRow: entry.group.beforeRow } : {}) } };
+    const w = next.windows[windowId]!;
+    const window = { ...w, tabIds: orderSections(w.tabIds, next.tabs, groups) };
+    next = { ...next, groups: syncGroupOrder(groups, window), windows: { ...next.windows, [windowId]: window } };
   }
   return ids[0] ? apply(next, activated(next, ids[0])) : next;
 }
@@ -421,8 +424,9 @@ export function recentTabIds(s: BrowserState, windowId: string, now = Date.now()
 
 export function placing(s: BrowserState, ids: string[], p: TabPlacement): BrowserState {
   const first = s.tabs[ids[0] ?? ""];
-  const w = first && s.windows[first.windowId];
-  if (!first || !w) return s;
+  const shownAs = first && s.windows[first.windowId];
+  if (!first || !shownAs) return s;
+  const w = { ...shownAs, tabIds: orderSections(shownAs.tabIds, s.tabs, s.groups) };
   const order = new Map(w.tabIds.map((id, i) => [id, i]));
   const moving = [...new Set(ids)]
     .filter((id) => s.tabs[id]?.windowId === w.id && s.tabs[id]?.profileId === first.profileId)
@@ -599,8 +603,9 @@ export const createOrganizeSlice: StateCreator<BrowserState, [], [], OrganizeSli
   moveGroup(groupId, p) {
     set((s) => {
       const g = s.groups[groupId];
-      const w = g && s.windows[g.windowId];
-      if (!g || !w || (p.beforeId && g.tabIds.includes(p.beforeId))) return {};
+      const shownAs = g && s.windows[g.windowId];
+      if (!g || !shownAs || (p.beforeId && g.tabIds.includes(p.beforeId))) return {};
+      const w = { ...shownAs, tabIds: orderSections(shownAs.tabIds, s.tabs, s.groups) };
       const { beforeRow: _, ...unanchored } = g;
       let groups = { ...s.groups, [groupId]: p.pinned ? { ...g, pinned: true } : { ...unanchored, pinned: false } };
       let pinChoices = s.pinChoices;
@@ -649,9 +654,10 @@ export const createOrganizeSlice: StateCreator<BrowserState, [], [], OrganizeSli
     const w = g && s.windows[g.windowId];
     if (!g || !w) return "";
     const [next, id] = withNewTab(s, w.id, { profileId: g.profileId, index: w.tabIds.indexOf(g.tabIds.at(-1)!) + 1 });
-    const window = next.windows[w.id]!;
     const groups = { ...next.groups, [groupId]: { ...g, collapsed: false, tabIds: [...g.tabIds, id] } };
-    set({ ...next, groups: syncGroupOrder(groups, window) });
+    const placed = next.windows[w.id]!;
+    const window = { ...placed, tabIds: orderSections(placeBlock(placed.tabIds, [...g.tabIds, id]), next.tabs, groups) };
+    set({ ...next, groups: syncGroupOrder(groups, window), windows: { ...next.windows, [w.id]: window } });
     return id;
   },
 

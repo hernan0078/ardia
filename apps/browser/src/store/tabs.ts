@@ -15,6 +15,7 @@ import {
   newId,
   pendingRestore,
   pinnedFirst,
+  isPinnedRow,
   pinSection,
   snapshotTab,
   viewTabIds,
@@ -468,13 +469,15 @@ export const createTabsSlice: StateCreator<BrowserState, [], [], TabsSlice> = (s
       const w = tab && s.windows[tab.windowId];
       if (!tab || !w) return {};
       const inSection = (t: string) => s.tabs[t]?.profileId === tab.profileId && pinSection(s.tabs[t]) === pinSection(tab);
-      const section = w.tabIds.filter(inSection);
+      const shown = orderSections(w.tabIds, s.tabs, s.groups);
+      const section = shown.filter(inSection);
       const moved = section.filter((t) => t !== id);
       moved.splice(Math.min(Math.max(toIndex, 0), moved.length), 0, id);
       let k = 0;
-      const tabIds = w.tabIds.map((t) => (inSection(t) ? moved[k++]! : t));
-      const window = { ...w, tabIds };
-      return { windows: { ...s.windows, [w.id]: window }, groups: syncGroupOrder(anchorPinnedGroups(tabIds, s.tabs, s.groups, w.id), window) };
+      const swapped = shown.map((t) => (inSection(t) ? moved[k++]! : t));
+      const groups = isPinnedRow(tab) ? anchorPinnedGroups(swapped, s.tabs, s.groups, w.id) : s.groups;
+      const window = { ...w, tabIds: orderSections(swapped, s.tabs, groups) };
+      return { windows: { ...s.windows, [w.id]: window }, groups: syncGroupOrder(groups, window) };
     });
   },
 });

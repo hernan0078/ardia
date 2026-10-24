@@ -168,7 +168,7 @@ export type ParkedPins = {
 export type ClosedGroup = {
   kind: "group";
   id: string;
-  group: Pick<TabGroup, "id" | "name" | "icon" | "color" | "pinned">;
+  group: Pick<TabGroup, "id" | "name" | "icon" | "color" | "pinned"> & Partial<Pick<TabGroup, "beforeRow">>;
   tabs: TabSnapshot[];
   tabIds?: string[];
   windowId: string;

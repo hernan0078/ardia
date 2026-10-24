@@ -425,7 +425,7 @@ export function deviceTabsAdapter(profileId: string, deviceId: string, name: () 
 }
 
 type PinValue = { g: string | null; u: string; t: string | null; i: string | null; ti: string; pos: string };
-type PinGroupValue = { n: string; i: string | null; c: TabGroup["color"]; pos: string };
+type PinGroupValue = { n: string; i: string | null; c: TabGroup["color"]; pos: string; b?: string };
 
 type Window = BrowserState["windows"][string];
 
@@ -447,7 +447,7 @@ export function pinnedAdapter(profileId: string): Adapter {
       const s = store();
       type Pin = Pick<Tab, "id" | "url" | "title" | "customTitle" | "customIcon"> & Partial<Pick<Tab, "pinnedUrl">>;
       const tiles: Pin[] = [];
-      const groups: Pick<TabGroup, "id" | "name" | "icon" | "color">[] = [];
+      const groups: (Pick<TabGroup, "id" | "name" | "icon" | "color"> & Partial<Pick<TabGroup, "beforeRow">>)[] = [];
       const members = new Map<string, Pin[]>();
       const pinnedGroupOf = new Map<string, TabGroup>();
       for (const g of Object.values(s.groups)) if (g.pinned && g.profileId === profileId) g.tabIds.forEach((id) => pinnedGroupOf.set(id, g));
@@ -495,7 +495,7 @@ export function pinnedAdapter(profileId: string): Adapter {
       place(tiles, null);
       const groupPositions = assignPositions(groups.map((g) => (base(`pin:g:${g.id}`) as PinGroupValue | undefined)?.pos));
       groups.forEach((g, i) => {
-        values.set(`pin:g:${g.id}`, { n: g.name, i: g.icon, c: g.color, pos: groupPositions[i]! } satisfies PinGroupValue);
+        values.set(`pin:g:${g.id}`, { n: g.name, i: g.icon, c: g.color, pos: groupPositions[i]!, ...(g.beforeRow ? { b: g.beforeRow } : {}) } satisfies PinGroupValue);
         place(members.get(g.id)!, g.id);
       });
       const choiceOf = (k: string) => (k.startsWith("pin:g:") ? groupChoiceKey(k.slice(6)) : placeChoiceKey(k.slice(6)));
@@ -592,9 +592,11 @@ export function pinnedAdapter(profileId: string): Adapter {
       for (const id of groupOrder) {
         const v = groupValues.get(id)!;
         const old = groups[id];
-        groups[id] = old
-          ? { ...old, name: v.n, icon: v.i, color: v.c, pinned: true }
-          : { id, ...pinKeyField(id), windowId: newPinWindow, profileId, name: v.n, icon: v.i, color: v.c, collapsed: false, pinned: true, tabIds: [], createdAt: Date.now() };
+        const anchor = v.b ? { beforeRow: v.b } : {};
+        if (old) {
+          const { beforeRow: _, ...unanchored } = old;
+          groups[id] = { ...unanchored, ...anchor, name: v.n, icon: v.i, color: v.c, pinned: true };
+        } else groups[id] = { id, ...pinKeyField(id), windowId: newPinWindow, profileId, name: v.n, icon: v.i, color: v.c, collapsed: false, pinned: true, tabIds: [], createdAt: Date.now(), ...anchor };
       }
       const noted = new Map<string, PinSyncEntry>();
       const note = (key: string, id: string) => {

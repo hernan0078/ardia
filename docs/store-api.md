@@ -36,7 +36,7 @@ modules before using them — this is a summary from the agent that built it.
   (`orderSections`, store/groups.ts). A pinned group sits right above the pinned row whose `pinKey` is its `beforeRow`, or
   below every row when that's unset or the row is gone. Moves that place pinned rows or groups set it from where they
   land (`anchorPinnedGroups` in `placing`, `moveGroup` and `moveTab`); anything else that changes `tabIds` keeps it by
-  ending in `orderSections`. Mirrored and parked with the group; not synced yet.
+  ending in `orderSections`, and the moves start from `orderSections` of the current order. Mirrored, parked, kept by Recently Closed, and synced as the group value's `b`.
 - UI: `ui.focusedWindowId`, `ui.focusOrder`, `ui.lastProfileId` (the regular profile of the window used last, a private
   window counting as its `originalProfileId`; saved with the session; read it through `lastActiveProfile(s)`, store/small.ts),
   `ui.appDark`, `windowUi[windowId]` (command panel, downloads popover), `find[tabId]`.
