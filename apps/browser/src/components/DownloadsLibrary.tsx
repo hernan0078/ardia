@@ -1,6 +1,7 @@
 import { Symbol, WindowDragRegion } from "@ardia/shell";
 import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { useShallow } from "zustand/react/shallow";
 import { useTheme } from "../lib/theme";
 import { useBrowser } from "../store/browser";
 import { useWindowUi } from "../store/hooks";
@@ -24,7 +25,7 @@ function Library({ windowId, closing, onClosed }: { windowId: string; closing: b
   const theme = useTheme();
   const [query, setQuery] = useState("");
   const [now, setNow] = useState(Date.now);
-  const downloads = useBrowser((s) => downloadsIn(s, windowId));
+  const downloads = useBrowser(useShallow((s) => downloadsIn(s, windowId)));
   const groups = downloadGroups(downloads, query, now);
   const close = () => useBrowser.getState().setDownloadsOpen(windowId, false);
   useEffect(() => {
